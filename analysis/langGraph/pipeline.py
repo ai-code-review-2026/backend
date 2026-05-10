@@ -44,11 +44,18 @@ class LangGraphPipeline:
         retriever: GraphRagRetriever | None = None,
         llm_orchestrator: LLMOrchestrator | None = None,
         cache: RedisCache | None = None,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        analysis_id: str | None = None,
     ) -> None:
         self._context_manager = context_manager or RepoContextManager()
         self._chunker = chunker or DiffChunker()
         self._retriever = retriever or GraphRagRetriever()
-        self._llm_orchestrator = llm_orchestrator or LLMOrchestrator()
+        self._llm_orchestrator = llm_orchestrator or LLMOrchestrator(
+            user_id=user_id,
+            project_id=project_id,
+            analysis_id=analysis_id,
+        )
         self._cache = cache or RedisCache()
         self._runner = self._build_runner()
 
@@ -373,7 +380,18 @@ async def run_langgraph_analysis(
     *,
     pipeline: LangGraphPipeline | None = None,
 ) -> LangGraphAnalysisResult:
-    selected_pipeline = pipeline or LangGraphPipeline()
+    """
+    Run LangGraph analysis with gateway-powered LLM observability.
+    
+    If request contains user_id/project_id/analysis_id, the LLM gateway
+    will be used for full observability (traces, metrics, Langfuse, OTEL).
+    Otherwise, falls back to legacy direct providers.
+    """
+    selected_pipeline = pipeline or LangGraphPipeline(
+        user_id=request.user_id,
+        project_id=request.project_id,
+        analysis_id=request.analysis_id,
+    )
     return await selected_pipeline.run(request)
 
 

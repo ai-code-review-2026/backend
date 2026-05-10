@@ -1,0 +1,120 @@
+################################################################################
+# Prometheus Configuration for AI Code Review Backend
+################################################################################
+
+global:
+  scrape_interval: 15s      # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  external_labels:
+    cluster: 'ai-code-review'
+    environment: 'production'
+
+# Alertmanager configuration (optional - add if you want alerting)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Prometheus self-monitoring
+  # ──────────────────────────────────────────────────────────────────────────
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # FastAPI Backend (via prometheus-fastapi-instrumentator)
+  # Endpoint: http://backend:8000/metrics
+  # ──────────────────────────────────────────────────────────────────────────
+  - job_name: 'backend-api'
+    static_configs:
+      - targets: ['backend:8000']
+        labels:
+          service: 'backend-api'
+          component: 'fastapi'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # PostgreSQL Exporter (if added)
+  # Install: docker run -d -p 9187:9187 -e DATA_SOURCE_NAME="..." wrouesnel/postgres_exporter
+  # ──────────────────────────────────────────────────────────────────────────
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #       labels:
+  #         service: 'postgres'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Redis Exporter (if added)
+  # Install: docker run -d -p 9121:9121 oliver006/redis_exporter
+  # ──────────────────────────────────────────────────────────────────────────
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         service: 'redis'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Neo4j Metrics (built-in Prometheus endpoint)
+  # Neo4j Community Edition doesn't expose metrics by default
+  # Neo4j Enterprise: http://neo4j:2004/metrics
+  # ──────────────────────────────────────────────────────────────────────────
+  # - job_name: 'neo4j'
+  #   static_configs:
+  #     - targets: ['neo4j:2004']
+  #       labels:
+  #         service: 'neo4j'
+  #   metrics_path: '/metrics'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # MinIO Metrics (built-in Prometheus endpoint)
+  # Endpoint: http://minio:9000/minio/v2/metrics/cluster
+  # ──────────────────────────────────────────────────────────────────────────
+  - job_name: 'minio'
+    static_configs:
+      - targets: ['minio:9000']
+        labels:
+          service: 'minio'
+    metrics_path: '/minio/v2/metrics/cluster'
+    scrape_interval: 30s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Celery Exporter (if added)
+  # Install: pip install celery-prometheus-exporter
+  # Run: celery-exporter --broker redis://redis:6379/0
+  # ──────────────────────────────────────────────────────────────────────────
+  # - job_name: 'celery'
+  #   static_configs:
+  #     - targets: ['celery-exporter:9540']
+  #       labels:
+  #         service: 'celery-worker'
+
+################################################################################
+# Key Metrics Available from FastAPI Backend (prometheus-fastapi-instrumentator):
+#
+# - http_requests_total: Total HTTP requests
+# - http_request_duration_seconds: Request latency histogram
+# - http_request_size_bytes: Request body size
+# - http_response_size_bytes: Response body size
+# - http_requests_in_progress: Current requests being processed
+# - process_cpu_seconds_total: CPU usage
+# - process_resident_memory_bytes: Memory usage
+# - python_gc_objects_collected_total: GC stats
+#
+# Example queries:
+# - Request rate: rate(http_requests_total[5m])
+# - Error rate: rate(http_requests_total{status=~"5.."}[5m])
+# - P95 latency: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+# - Memory usage: process_resident_memory_bytes / 1024 / 1024
+################################################################################

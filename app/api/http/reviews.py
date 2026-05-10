@@ -11,6 +11,28 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal, require_permission
+from app.data.database import get_engine
+from app.data.repos.change_requests_repo import (
+    ChangeRequestsRepo,
+    CreateChangeRequestInput,
+    UpdateChangeRequestInput,
+)
+from app.data.repos.review_assignments_repo import (
+    CreateReviewAssignmentInput,
+    ReviewAssignmentsRepo,
+    UpdateReviewAssignmentInput,
+)
+from app.data.repos.review_comments_repo import (
+    CreateReviewCommentInput,
+    ReviewCommentsRepo,
+    UpdateReviewCommentInput,
+)
+from app.data.repos.review_templates_repo import (
+    CreateReviewTemplateInput,
+    ReviewTemplatesRepo,
+    UpdateReviewTemplateInput,
+)
+from app.services.notifications import NotificationChannel, NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -22,27 +44,11 @@ def _serialize_datetime_fields(row: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, datetime):
             result[key] = value.isoformat()
     return result
-from app.data.database import get_engine
-from app.data.repos.review_assignments_repo import (
-    CreateReviewAssignmentInput,
-    ReviewAssignmentsRepo,
-    UpdateReviewAssignmentInput,
-)
-from app.data.repos.review_comments_repo import (
-    CreateReviewCommentInput,
-    ReviewCommentsRepo,
-    UpdateReviewCommentInput,
-)
-from app.data.repos.change_requests_repo import (
-    ChangeRequestsRepo,
-    CreateChangeRequestInput,
-    UpdateChangeRequestInput,
-)
-from app.services.notifications import NotificationChannel, NotificationService
 
 router = APIRouter(prefix="/api/v1/reviews", tags=["reviews"])
 
 _MENTION_PATTERN = re.compile(r"@([A-Za-z0-9._-]{3,80})")
+_TEMPLATE_CATEGORIES = ("security", "performance", "general", "critical_change", "frontend", "backend")
 
 
 def _get_analysis_context(analysis_id: str) -> dict[str, Any] | None:
@@ -137,6 +143,62 @@ def _resolve_mentions_user_ids(text_content: str) -> list[str]:
         if mention_tokens.intersection(candidates):
             matched_ids.append(user_id)
     return list(dict.fromkeys(matched_ids))
+
+
+def _is_admin_principal(principal: AuthenticatedPrincipal | None) -> bool:
+    if principal is None:
+        return False
+    return str(principal.role).strip().lower() == "admin"
+
+
+def _parse_json_field(value: Any, fallback: Any) -> Any:
+    if value is None:
+        return fallback
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:  # noqa: BLE001
+            return fallback
+    return fallback
+
+
+def _resolve_template_creator_names(user_ids: list[str]) -> dict[str, str]:
+    unique_ids = list(dict.fromkeys(uid for uid in user_ids if isinstance(uid, str) and uid.strip()))
+    if not unique_ids:
+        return {}
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT id, display_name, email
+                FROM users
+                WHERE id = ANY(:user_ids)
+                """
+            ),
+            {"user_ids": unique_ids},
+        ).mappings().all()
+
+    resolved: dict[str, str] = {}
+    for row in rows:
+        user_id = str(row.get("id") or "").strip()
+        if not user_id:
+            continue
+        display_name = str(row.get("display_name") or "").strip()
+        email = str(row.get("email") or "").strip()
+        resolved[user_id] = display_name or email or "Unknown"
+    return resolved
+
+
+def _serialize_template(row: dict[str, Any], created_by_name: str | None = None) -> dict[str, Any]:
+    data = _serialize_datetime_fields(dict(row))
+    data["checklist_items"] = _parse_json_field(data.get("checklist_items"), [])
+    data["auto_apply_rules"] = _parse_json_field(data.get("auto_apply_rules"), {})
+    data["created_by_name"] = created_by_name
+    return data
 
 
 # Review Assignment Models
@@ -257,6 +319,49 @@ class ChangeRequestResponse(BaseModel):
     resolved_by: str | None
     resolved_at: str | None
     resolution_comment: str | None
+    created_at: str
+    updated_at: str
+
+
+class CreateTemplateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=180)
+    description: str | None = None
+    category: Literal["security", "performance", "general", "critical_change", "frontend", "backend"] = "general"
+    is_default: bool = False
+    is_public: bool = False
+    checklist_items: list[dict[str, Any]] = Field(default_factory=list)
+    guidelines: str | None = None
+    auto_apply_rules: dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateTemplateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=180)
+    description: str | None = None
+    is_default: bool | None = None
+    is_public: bool | None = None
+    checklist_items: list[dict[str, Any]] | None = None
+    guidelines: str | None = None
+    auto_apply_rules: dict[str, Any] | None = None
+
+
+class ReviewTemplateResponse(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    category: str
+    is_default: bool
+    is_public: bool
+    created_by: str
+    created_by_name: str | None = None
+    organization_id: str | None = None
+    checklist_items: list[dict[str, Any]] = Field(default_factory=list)
+    guidelines: str | None = None
+    auto_apply_rules: dict[str, Any] = Field(default_factory=dict)
+    usage_count: int = 0
     created_at: str
     updated_at: str
 
@@ -720,6 +825,328 @@ async def update_change_request(
 
     updated_cr = repo.get_change_request_by_id(cr_id)
     return ChangeRequestResponse(**dict(updated_cr))
+
+
+@router.get("/templates", response_model=list[ReviewTemplateResponse])
+async def list_review_templates(
+    category: str | None = Query(None),
+    mine_only: bool = Query(False),
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("templates.use")),
+) -> list[ReviewTemplateResponse]:
+    """List review templates visible to the current user."""
+    if category is not None and category not in _TEMPLATE_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid template category")
+
+    user_id = principal.user_id if principal else "local-dev-user"
+    org_id = principal.org_id if principal else None
+    repo = ReviewTemplatesRepo()
+
+    if mine_only:
+        rows = repo.get_templates_by_user(user_id)
+        if category:
+            rows = [row for row in rows if row.get("category") == category]
+    elif category:
+        rows = repo.get_templates_by_category(category=category, user_id=user_id, organization_id=org_id)
+    else:
+        public_rows = repo.get_public_templates(organization_id=org_id)
+        own_rows = repo.get_templates_by_user(user_id)
+        merged: dict[str, dict[str, Any]] = {}
+        for row in [*public_rows, *own_rows]:
+            row_dict = dict(row)
+            template_id = str(row_dict.get("id") or "").strip()
+            if template_id:
+                merged[template_id] = row_dict
+        rows = list(merged.values())
+        rows.sort(
+            key=lambda item: (
+                -int(bool(item.get("is_default"))),
+                -int(item.get("usage_count") or 0),
+                str(item.get("name") or "").lower(),
+            )
+        )
+
+    if org_id:
+        rows = [
+            row for row in rows
+            if (row.get("organization_id") is None or str(row.get("organization_id")) == org_id)
+        ]
+
+    creator_names = _resolve_template_creator_names([str(row.get("created_by") or "") for row in rows])
+    payload: list[ReviewTemplateResponse] = []
+    for row in rows:
+        row_dict = dict(row)
+        creator_id = str(row_dict.get("created_by") or "")
+        payload.append(
+            ReviewTemplateResponse(
+                **_serialize_template(row_dict, created_by_name=creator_names.get(creator_id)),
+            )
+        )
+    return payload
+
+
+@router.get("/templates/{template_id}", response_model=ReviewTemplateResponse)
+async def get_review_template(
+    template_id: str,
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("templates.use")),
+) -> ReviewTemplateResponse:
+    """Get a single review template."""
+    repo = ReviewTemplatesRepo()
+    template = repo.get_template_by_id(template_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    row = dict(template)
+    user_id = principal.user_id if principal else "local-dev-user"
+    org_id = principal.org_id if principal else None
+    is_owner = str(row.get("created_by") or "") == user_id
+    is_public = bool(row.get("is_public"))
+    is_admin = _is_admin_principal(principal)
+    same_org = row.get("organization_id") is None or str(row.get("organization_id")) == str(org_id)
+
+    if org_id and not same_org:
+        raise HTTPException(status_code=403, detail="Template belongs to another organization")
+    if not (is_public or is_owner or is_admin):
+        raise HTTPException(status_code=403, detail="You do not have access to this template")
+
+    creator_names = _resolve_template_creator_names([str(row.get("created_by") or "")])
+    return ReviewTemplateResponse(
+        **_serialize_template(
+            row,
+            created_by_name=creator_names.get(str(row.get("created_by") or "")),
+        )
+    )
+
+
+@router.post("/templates", response_model=ReviewTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_review_template(
+    request: CreateTemplateRequest,
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("templates.create")),
+) -> ReviewTemplateResponse:
+    """Create a new review template."""
+    if request.category not in _TEMPLATE_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid template category")
+
+    creator_id = principal.user_id if principal else "local-dev-user"
+    org_id = principal.org_id if principal else None
+    repo = ReviewTemplatesRepo()
+
+    template_id = repo.create_template(
+        CreateReviewTemplateInput(
+            created_by=creator_id,
+            organization_id=org_id,
+            name=request.name.strip(),
+            description=request.description.strip() if isinstance(request.description, str) else request.description,
+            category=request.category,
+            is_default=request.is_default,
+            is_public=request.is_public,
+            checklist_items=request.checklist_items,
+            guidelines=request.guidelines,
+            auto_apply_rules=request.auto_apply_rules,
+        )
+    )
+
+    if request.is_default:
+        engine = get_engine()
+        with engine.begin() as conn:
+            if org_id:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE review_templates
+                        SET is_default = FALSE
+                        WHERE category = :category
+                          AND organization_id = :organization_id
+                          AND id != :template_id
+                        """
+                    ),
+                    {
+                        "category": request.category,
+                        "organization_id": org_id,
+                        "template_id": template_id,
+                    },
+                )
+            else:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE review_templates
+                        SET is_default = FALSE
+                        WHERE category = :category
+                          AND organization_id IS NULL
+                          AND id != :template_id
+                        """
+                    ),
+                    {
+                        "category": request.category,
+                        "template_id": template_id,
+                    },
+                )
+
+    created = repo.get_template_by_id(template_id)
+    if created is None:
+        raise HTTPException(status_code=500, detail="Failed to create template")
+
+    creator_names = _resolve_template_creator_names([creator_id])
+    return ReviewTemplateResponse(
+        **_serialize_template(created, created_by_name=creator_names.get(creator_id))
+    )
+
+
+@router.patch("/templates/{template_id}", response_model=ReviewTemplateResponse)
+async def update_review_template(
+    template_id: str,
+    request: UpdateTemplateRequest,
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("templates.create")),
+) -> ReviewTemplateResponse:
+    """Update an existing review template."""
+    repo = ReviewTemplatesRepo()
+    existing = repo.get_template_by_id(template_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    existing_dict = dict(existing)
+    user_id = principal.user_id if principal else "local-dev-user"
+    org_id = principal.org_id if principal else None
+    is_owner = str(existing_dict.get("created_by") or "") == user_id
+    is_admin = _is_admin_principal(principal)
+    same_org = existing_dict.get("organization_id") is None or str(existing_dict.get("organization_id")) == str(org_id)
+
+    if not same_org and org_id:
+        raise HTTPException(status_code=403, detail="Template belongs to another organization")
+    if not (is_owner or is_admin):
+        raise HTTPException(status_code=403, detail="Only owner or admin can edit this template")
+
+    success = repo.update_template(
+        template_id,
+        UpdateReviewTemplateInput(
+            name=request.name.strip() if isinstance(request.name, str) else request.name,
+            description=request.description.strip() if isinstance(request.description, str) else request.description,
+            is_default=request.is_default,
+            is_public=request.is_public,
+            checklist_items=request.checklist_items,
+            guidelines=request.guidelines,
+            auto_apply_rules=request.auto_apply_rules,
+        ),
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update template")
+
+    if request.is_default:
+        category = str(existing_dict.get("category") or "")
+        engine = get_engine()
+        with engine.begin() as conn:
+            if org_id:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE review_templates
+                        SET is_default = FALSE
+                        WHERE category = :category
+                          AND organization_id = :organization_id
+                          AND id != :template_id
+                        """
+                    ),
+                    {
+                        "category": category,
+                        "organization_id": org_id,
+                        "template_id": template_id,
+                    },
+                )
+            else:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE review_templates
+                        SET is_default = FALSE
+                        WHERE category = :category
+                          AND organization_id IS NULL
+                          AND id != :template_id
+                        """
+                    ),
+                    {
+                        "category": category,
+                        "template_id": template_id,
+                    },
+                )
+
+    updated = repo.get_template_by_id(template_id)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Failed to load updated template")
+
+    creator_id = str(updated.get("created_by") or "")
+    creator_names = _resolve_template_creator_names([creator_id])
+    return ReviewTemplateResponse(
+        **_serialize_template(updated, created_by_name=creator_names.get(creator_id))
+    )
+
+
+@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_review_template(
+    template_id: str,
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("templates.create")),
+) -> None:
+    """Delete a review template."""
+    repo = ReviewTemplatesRepo()
+    existing = repo.get_template_by_id(template_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    existing_dict = dict(existing)
+    user_id = principal.user_id if principal else "local-dev-user"
+    org_id = principal.org_id if principal else None
+    is_owner = str(existing_dict.get("created_by") or "") == user_id
+    is_admin = _is_admin_principal(principal)
+    same_org = existing_dict.get("organization_id") is None or str(existing_dict.get("organization_id")) == str(org_id)
+
+    if not same_org and org_id:
+        raise HTTPException(status_code=403, detail="Template belongs to another organization")
+    if not (is_owner or is_admin):
+        raise HTTPException(status_code=403, detail="Only owner or admin can delete this template")
+    if bool(existing_dict.get("is_default")) and not is_admin:
+        raise HTTPException(status_code=403, detail="Default templates can only be deleted by admin")
+
+    deleted = repo.delete_template(template_id)
+    if not deleted:
+        raise HTTPException(status_code=500, detail="Failed to delete template")
+
+
+@router.post("/templates/{template_id}/use", response_model=ReviewTemplateResponse)
+async def use_review_template(
+    template_id: str,
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("templates.use")),
+) -> ReviewTemplateResponse:
+    """Mark a template as used and return it."""
+    repo = ReviewTemplatesRepo()
+    existing = repo.get_template_by_id(template_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    row = dict(existing)
+    user_id = principal.user_id if principal else "local-dev-user"
+    org_id = principal.org_id if principal else None
+    is_owner = str(row.get("created_by") or "") == user_id
+    is_public = bool(row.get("is_public"))
+    is_admin = _is_admin_principal(principal)
+    same_org = row.get("organization_id") is None or str(row.get("organization_id")) == str(org_id)
+
+    if org_id and not same_org:
+        raise HTTPException(status_code=403, detail="Template belongs to another organization")
+    if not (is_owner or is_public or is_admin):
+        raise HTTPException(status_code=403, detail="You do not have access to this template")
+
+    updated_ok = repo.increment_usage_count(template_id)
+    if not updated_ok:
+        raise HTTPException(status_code=500, detail="Failed to register template usage")
+
+    updated = repo.get_template_by_id(template_id)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Failed to load template")
+
+    creator_id = str(updated.get("created_by") or "")
+    creator_names = _resolve_template_creator_names([creator_id])
+    return ReviewTemplateResponse(
+        **_serialize_template(updated, created_by_name=creator_names.get(creator_id))
+    )
 
 
 # Dashboard Models

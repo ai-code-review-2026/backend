@@ -13,14 +13,29 @@ from pydantic import BaseModel, Field
 
 from app.core.rag_agents import RAGOrchestrator, AgentContext
 from app.integrations.graph_database.neo4j_client import get_neo4j_client
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 
-# Initialize services
-_neo4j_client = get_neo4j_client()
-_orchestrator = RAGOrchestrator(neo4j_client=_neo4j_client)
+_neo4j_client = None
+_orchestrator: RAGOrchestrator | None = None
+
+
+def _get_orchestrator() -> RAGOrchestrator:
+    global _neo4j_client, _orchestrator
+    if not settings.NEO4J_ENABLED:
+        raise HTTPException(status_code=503, detail="Neo4j is disabled")
+    try:
+        if _neo4j_client is None:
+            _neo4j_client = get_neo4j_client()
+        if _orchestrator is None:
+            _orchestrator = RAGOrchestrator(neo4j_client=_neo4j_client)
+        return _orchestrator
+    except Exception as exc:
+        logger.warning("RAG orchestrator unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Neo4j is unavailable") from exc
 
 
 # Request/Response models
@@ -86,7 +101,8 @@ async def execute_rag_query(request: RAGQueryRequest):
     context and generate a response.
     """
     try:
-        result = await _orchestrator.query(
+        orchestrator = _get_orchestrator()
+        result = await orchestrator.query(
             repo_id=request.repo_id,
             query=request.query,
             org_id=request.org_id,
@@ -147,7 +163,8 @@ async def execute_code_query(request: RAGQueryRequest):
     """
     try:
         # Force only code agent
-        result = await _orchestrator.query(
+        orchestrator = _get_orchestrator()
+        result = await orchestrator.query(
             repo_id=request.repo_id,
             query=request.query,
             org_id=request.org_id,
@@ -168,7 +185,8 @@ async def execute_documentation_query(request: RAGQueryRequest):
     Uses only the documentation agent for doc-specific queries.
     """
     try:
-        result = await _orchestrator.query(
+        orchestrator = _get_orchestrator()
+        result = await orchestrator.query(
             repo_id=request.repo_id,
             query=request.query,
             org_id=request.org_id,
@@ -189,7 +207,8 @@ async def analyze_diff(request: DiffAnalysisRequest):
     Uses all agents to provide comprehensive review context.
     """
     try:
-        result = await _orchestrator.analyze_diff(
+        orchestrator = _get_orchestrator()
+        result = await orchestrator.analyze_diff(
             repo_id=request.repo_id,
             diff_text=request.diff_text,
             changed_files=request.changed_files,

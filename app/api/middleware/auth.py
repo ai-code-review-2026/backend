@@ -66,6 +66,7 @@ class AuthenticatedPrincipal(BaseModel):
     user_id: str
     email: str
     display_name: str | None = None
+    github_login: str | None = None
     canonical_role: str = "developer"
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
@@ -425,6 +426,67 @@ def _extract_display_name_from_claims(claims: dict[str, Any]) -> str | None:
     )
 
 
+def _normalize_github_login(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized or None
+
+
+def _extract_github_login_from_claims(claims: dict[str, Any]) -> str | None:
+    metadata_blocks: list[dict[str, Any]] = []
+    for key in ("public_metadata", "publicMetadata", "unsafe_metadata", "unsafeMetadata", "metadata", "app_metadata", "appMetadata"):
+        block = _extract_dict(claims, key)
+        if isinstance(block, dict):
+            metadata_blocks.append(block)
+
+    candidates: list[Any] = [
+        claims.get("username"),
+        claims.get("github_login"),
+        claims.get("githubUsername"),
+        claims.get("preferred_username"),
+        claims.get("nickname"),
+    ]
+
+    for block in metadata_blocks:
+        candidates.extend(
+            [
+                block.get("github_login"),
+                block.get("githubLogin"),
+                block.get("github_username"),
+                block.get("githubUsername"),
+                block.get("username"),
+            ]
+        )
+
+    external_accounts = claims.get("external_accounts") or claims.get("externalAccounts")
+    if isinstance(external_accounts, list):
+        for account in external_accounts:
+            if not isinstance(account, dict):
+                continue
+            provider = _first_non_empty_string(
+                account.get("provider"),
+                account.get("provider_id"),
+                account.get("providerId"),
+                account.get("strategy"),
+            )
+            if not provider or "github" not in provider.lower():
+                continue
+            candidates.extend(
+                [
+                    account.get("username"),
+                    account.get("login"),
+                    account.get("preferred_username"),
+                ]
+            )
+
+    for candidate in candidates:
+        normalized = _normalize_github_login(candidate)
+        if normalized:
+            return normalized
+    return None
+
+
 async def _validate_and_decode_token(token: str) -> dict[str, Any]:
     """Validate and decode Clerk JWT token."""
     try:
@@ -476,7 +538,19 @@ async def _sync_user_with_db(repo: RBACRepo, user_id: str, email: str, display_n
         )
 
 
-def _construct_principal_from_db_user(user, org_id: str | None, org_slug: str | None, org_name: str | None, org_role: str | None, fallback_user_id: str, fallback_email: str, fallback_display_name: str | None, fallback_roles: list[str], fallback_permissions: list[str]) -> AuthenticatedPrincipal:
+def _construct_principal_from_db_user(
+    user,
+    org_id: str | None,
+    org_slug: str | None,
+    org_name: str | None,
+    org_role: str | None,
+    fallback_user_id: str,
+    fallback_email: str,
+    fallback_display_name: str | None,
+    fallback_roles: list[str],
+    fallback_permissions: list[str],
+    fallback_github_login: str | None = None,
+) -> AuthenticatedPrincipal:
     """Construct principal from database user."""
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")
@@ -503,6 +577,7 @@ def _construct_principal_from_db_user(user, org_id: str | None, org_slug: str | 
         user_id=user.id,
         email=user.email or fallback_email,
         display_name=user.display_name or fallback_display_name,
+        github_login=fallback_github_login,
         canonical_role=_select_canonical_role(resolved_roles),
         roles=resolved_roles,
         permissions=resolved_permissions,
@@ -513,7 +588,18 @@ def _construct_principal_from_db_user(user, org_id: str | None, org_slug: str | 
     )
 
 
-def _construct_principal_fallback(user_id: str, email: str, display_name: str | None, roles: list[str], permissions: list[str], org_id: str | None, org_slug: str | None, org_name: str | None, org_role: str | None) -> AuthenticatedPrincipal:
+def _construct_principal_fallback(
+    user_id: str,
+    email: str,
+    display_name: str | None,
+    roles: list[str],
+    permissions: list[str],
+    org_id: str | None,
+    org_slug: str | None,
+    org_name: str | None,
+    org_role: str | None,
+    github_login: str | None = None,
+) -> AuthenticatedPrincipal:
     """Construct principal when no DB user exists."""
     resolved_roles = canonicalize_roles(roles)
     resolved_permissions = sorted(set(permissions) | set(permissions_for_roles(resolved_roles)))
@@ -521,6 +607,7 @@ def _construct_principal_fallback(user_id: str, email: str, display_name: str | 
         user_id=user_id,
         email=email,
         display_name=display_name,
+        github_login=github_login,
         canonical_role=_select_canonical_role(resolved_roles),
         roles=resolved_roles,
         permissions=resolved_permissions,
@@ -534,6 +621,7 @@ def _construct_principal_fallback(user_id: str, email: str, display_name: str | 
 async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> AuthenticatedPrincipal:
     claims = await _validate_and_decode_token(token)
     user_id, org_id, org_slug, org_name, org_role = _extract_user_info(claims)
+    github_login = _extract_github_login_from_claims(claims)
     
     # Check cache first to avoid DB calls on every request
     cached_principal = _get_cached_principal(user_id, org_id)
@@ -550,12 +638,35 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
 
     user = await asyncio.to_thread(repo.get_user, user_id)
     if user is not None:
-        principal = _construct_principal_from_db_user(user, org_id, org_slug, org_name, org_role, user_id, email, display_name, roles, [])
+        principal = _construct_principal_from_db_user(
+            user,
+            org_id,
+            org_slug,
+            org_name,
+            org_role,
+            user_id,
+            email,
+            display_name,
+            roles,
+            [],
+            github_login,
+        )
         _cache_principal(user_id, org_id, principal)
         return principal
 
     permissions = permissions_for_roles(roles)
-    principal = _construct_principal_fallback(user_id, email, display_name, roles, permissions, org_id, org_slug, org_name, org_role)
+    principal = _construct_principal_fallback(
+        user_id,
+        email,
+        display_name,
+        roles,
+        permissions,
+        org_id,
+        org_slug,
+        org_name,
+        org_role,
+        github_login,
+    )
     _cache_principal(user_id, org_id, principal)
     return principal
 
@@ -575,8 +686,10 @@ async def get_current_principal(
         try:
             return await _build_principal_from_clerk_token(token, repo)
         except Exception as exc:
-            # If auth enforcement is disabled, allow fallback to header-based auth
-            if not _is_auth_enforced():
+            # If auth enforcement is disabled, allow fallback to explicit
+            # header-based auth only. A bad bearer token must not silently
+            # become the local admin principal.
+            if not _is_auth_enforced() and x_user_id:
                 logger.debug("Bearer token validation failed; falling back to X-User-Id")
             else:
                 if isinstance(exc, HTTPException):
@@ -610,6 +723,7 @@ async def get_current_principal(
         user_id=user.id,
         email=user.email,
         display_name=user.display_name,
+        github_login=None,
         canonical_role=_select_canonical_role(resolved_roles),
         roles=resolved_roles,
         permissions=resolved_permissions,
@@ -717,6 +831,7 @@ def enrich_principal_with_project_role(
             user_id=principal.user_id,
             email=principal.email,
             display_name=principal.display_name,
+            github_login=principal.github_login,
             canonical_role=_select_canonical_role(new_roles),
             roles=new_roles,
             permissions=new_permissions,

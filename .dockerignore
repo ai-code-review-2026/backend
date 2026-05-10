@@ -14,7 +14,15 @@ tests/
 
 # runtime data (CRITIQUE)
 qdrant_storage/
-*.lock
 storage/
 data/
 vector_store/
+
+# Poetry cache (IMPORTANT - évite conflits)
+poetry.lock.bak
+.poetry-cache/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

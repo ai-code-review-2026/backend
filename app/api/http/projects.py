@@ -127,6 +127,46 @@ class UpdateProjectRequest(BaseModel):
     auto_analysis_enabled: bool | None = None
 
 
+class CreateProjectInvitationRequest(BaseModel):
+    """Request model for creating a project invitation."""
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    github_login: str | None = Field(default=None, max_length=255)
+    role_code: str = Field(default="developer", min_length=1, max_length=64)
+    clerk_invitation_id: str | None = Field(default=None, max_length=255)
+
+
+class UpdateProjectInvitationRequest(BaseModel):
+    """Request model for updating invitation status."""
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["pending", "accepted", "revoked"] = "revoked"
+
+
+class ProjectInvitationResponse(BaseModel):
+    """Project invitation response model."""
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    project_id: str
+    email: str
+    github_login: str | None = None
+    role_code: str
+    invited_by: str | None = None
+    status: Literal["pending", "accepted", "revoked"]
+    clerk_invitation_id: str | None = None
+    created_at: str | None = None
+    accepted_at: str | None = None
+
+
+class ProjectInvitationListResponse(BaseModel):
+    """Project invitation list response model."""
+    project_id: str
+    items: list[ProjectInvitationResponse]
+    total: int
+
+
 # ── Helper Functions ────────────────────────────────────────────────────────────
 
 def _get_project_stats(engine, project_id: str, repo_id: str | None = None) -> dict[str, Any]:
@@ -239,22 +279,58 @@ def _get_project_branches(engine, project_id: str) -> list[BranchConfig]:
     return branches
 
 
-def _get_project_members(engine, project_id: str, rbac_repo: RBACRepo) -> list[ProjectMember]:
+def _get_project_members(
+    engine,
+    project_id: str,
+    rbac_repo: RBACRepo,
+    fallback_project_id: str | None = None,
+) -> list[ProjectMember]:
     """Get team members for a project."""
-    members = []
+    members: list[ProjectMember] = []
+    seen_user_ids: set[str] = set()
+    project_keys: list[str] = [project_id]
+    if fallback_project_id and fallback_project_id != project_id:
+        project_keys.append(fallback_project_id)
     try:
-        member_records = rbac_repo.get_project_members(project_id)
-        for record in member_records:
-            members.append(ProjectMember(
-                user_id=record["user_id"],
-                email=record.get("user_email"),
-                display_name=record.get("user_display_name"),
-                role=record.get("role_code", "developer"),
-            ))
+        for key in project_keys:
+            member_records = rbac_repo.get_project_members(key)
+            for record in member_records:
+                user_id = str(record.get("user_id", "")).strip()
+                if not user_id or user_id in seen_user_ids:
+                    continue
+                seen_user_ids.add(user_id)
+                members.append(ProjectMember(
+                    user_id=user_id,
+                    email=record.get("user_email"),
+                    display_name=record.get("user_display_name"),
+                    role=record.get("role_code", "developer"),
+                ))
     except Exception:
         pass  # Table might not exist
     
     return members
+
+
+def _to_invitation_response(row: dict[str, Any] | Any) -> ProjectInvitationResponse:
+    status_value = str((row.get("status") if isinstance(row, dict) else row["status"]) or "pending")
+    normalized_status: Literal["pending", "accepted", "revoked"] = "pending"
+    if status_value in {"accepted", "revoked"}:
+        normalized_status = status_value  # type: ignore[assignment]
+
+    created_at = row.get("created_at") if isinstance(row, dict) else row["created_at"]
+    accepted_at = row.get("accepted_at") if isinstance(row, dict) else row["accepted_at"]
+    return ProjectInvitationResponse(
+        id=str(row.get("id") if isinstance(row, dict) else row["id"]),
+        project_id=str(row.get("project_id") if isinstance(row, dict) else row["project_id"]),
+        email=str(row.get("email") if isinstance(row, dict) else row["email"]),
+        github_login=(row.get("github_login") if isinstance(row, dict) else row["github_login"]),
+        role_code=str(row.get("role_code") if isinstance(row, dict) else row["role_code"]),
+        invited_by=(row.get("invited_by") if isinstance(row, dict) else row["invited_by"]),
+        status=normalized_status,
+        clerk_invitation_id=(row.get("clerk_invitation_id") if isinstance(row, dict) else row["clerk_invitation_id"]),
+        created_at=created_at.isoformat() if created_at else None,
+        accepted_at=accepted_at.isoformat() if accepted_at else None,
+    )
 
 
 def _get_team_info(engine, team_id: str | None) -> tuple[str | None, str | None]:
@@ -278,6 +354,41 @@ def _get_team_info(engine, team_id: str | None) -> tuple[str | None, str | None]
         pass
     
     return team_id, None
+
+
+def _resolve_project_lookup_keys(engine, project_ref: str) -> tuple[str, str]:
+    """Resolve both canonical project UUID and repo_id for a project reference."""
+    from sqlalchemy import text
+    import uuid
+
+    normalized_ref = project_ref.strip()
+    if not normalized_ref:
+        raise HTTPException(status_code=422, detail="Project reference is required")
+
+    try:
+        uuid.UUID(normalized_ref)
+        is_uuid = True
+    except ValueError:
+        is_uuid = False
+
+    with engine.connect() as conn:
+        if is_uuid:
+            row = conn.execute(
+                text("SELECT id, repo_id FROM project_profiles WHERE id = :project_id LIMIT 1"),
+                {"project_id": normalized_ref},
+            ).mappings().first()
+            if row:
+                return str(row["id"]), str(row["repo_id"])
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        repo_id = normalized_ref.lower()
+        row = conn.execute(
+            text("SELECT id, repo_id FROM project_profiles WHERE repo_id = :repo_id LIMIT 1"),
+            {"repo_id": repo_id},
+        ).mappings().first()
+        if row:
+            return str(row["id"]), str(row["repo_id"])
+        raise HTTPException(status_code=404, detail="Project not found")
 
 
 def _ensure_project_profile(
@@ -518,7 +629,7 @@ async def create_project(
         try:
             rbac_repo.assign_project_role(
                 user_id=principal.user_id,
-                project_id=repo_id,
+                project_id=project_id,
                 role_code="admin",
                 assigned_by=principal.user_id,
                 notes="Project creator",
@@ -538,7 +649,7 @@ async def create_project(
                 try:
                     rbac_repo.assign_project_role(
                         user_id=member.user_id,
-                        project_id=repo_id,
+                        project_id=project_id,
                         role_code=member.role,
                         assigned_by=principal.user_id,
                     )
@@ -738,7 +849,7 @@ async def list_projects(
 
             # Settings / members / branches keyed by legacy repo_id
             settings = settings_repo.get_settings(repo_id)
-            members = _get_project_members(engine, repo_id, rbac_repo)
+            members = _get_project_members(engine, project_id_uuid, rbac_repo, fallback_project_id=repo_id)
             branches = _get_project_branches(engine, repo_id)
 
             # Stats: reuse helper keyed by repo_id for findings aggregation.
@@ -873,7 +984,12 @@ async def get_project(
     settings = settings_repo.get_settings(repo_id)
 
     # Get members using repo_id
-    members = _get_project_members(engine, repo_id, rbac_repo)
+    members = _get_project_members(
+        engine,
+        project_id if is_uuid else repo_id,
+        rbac_repo,
+        fallback_project_id=repo_id if is_uuid else None,
+    )
 
     # Get branches using repo_id
     branches = _get_project_branches(engine, repo_id)
@@ -968,3 +1084,247 @@ async def update_project(
     
     # Return updated project
     return await get_project(project_id, principal)
+
+
+@router.get("/{project_id:path}/invitations", response_model=ProjectInvitationListResponse)
+async def list_project_invitations(
+    project_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> ProjectInvitationListResponse:
+    """List pending/accepted/revoked invitations for a project."""
+    enforce_permission(principal, "analyses.read")
+    from sqlalchemy import text
+
+    engine = get_engine()
+    canonical_project_id, _repo_id = _resolve_project_lookup_keys(engine, project_id)
+
+    with engine.connect() as conn:
+        rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT
+                        id,
+                        project_id,
+                        email,
+                        github_login,
+                        role_code,
+                        invited_by,
+                        status,
+                        clerk_invitation_id,
+                        created_at,
+                        accepted_at
+                    FROM pending_project_invitations
+                    WHERE project_id = :project_id
+                    ORDER BY created_at DESC
+                    """
+                ),
+                {"project_id": canonical_project_id},
+            )
+            .mappings()
+            .all()
+        )
+
+    items = [_to_invitation_response(dict(row)) for row in rows]
+    return ProjectInvitationListResponse(
+        project_id=canonical_project_id,
+        items=items,
+        total=len(items),
+    )
+
+
+@router.post("/{project_id:path}/invitations", response_model=ProjectInvitationResponse, status_code=status.HTTP_201_CREATED)
+async def create_project_invitation(
+    project_id: str,
+    request: CreateProjectInvitationRequest,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> ProjectInvitationResponse:
+    """Create or refresh a pending invitation for a project collaborator."""
+    enforce_permission(principal, "analyses.create")
+    from sqlalchemy import text
+
+    normalized_email = request.email.strip().lower()
+    if "@" not in normalized_email:
+        raise HTTPException(status_code=422, detail="Invalid email format")
+
+    engine = get_engine()
+    canonical_project_id, _repo_id = _resolve_project_lookup_keys(engine, project_id)
+    invitation_id = f"inv_{uuid.uuid4().hex[:20]}"
+    normalized_role = request.role_code.strip().lower() if request.role_code.strip() else "developer"
+    normalized_github = request.github_login.strip().lower() if request.github_login and request.github_login.strip() else None
+    clerk_invitation_id = (
+        request.clerk_invitation_id.strip()
+        if request.clerk_invitation_id and request.clerk_invitation_id.strip()
+        else None
+    )
+
+    with engine.begin() as conn:
+        existing = (
+            conn.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM pending_project_invitations
+                    WHERE project_id = :project_id
+                      AND email = :email
+                      AND status = 'pending'
+                    LIMIT 1
+                    """
+                ),
+                {"project_id": canonical_project_id, "email": normalized_email},
+            )
+            .mappings()
+            .first()
+        )
+
+        if existing:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        UPDATE pending_project_invitations
+                        SET
+                            github_login = COALESCE(:github_login, github_login),
+                            role_code = :role_code,
+                            invited_by = :invited_by,
+                            clerk_invitation_id = COALESCE(:clerk_invitation_id, clerk_invitation_id),
+                            status = 'pending',
+                            accepted_at = NULL
+                        WHERE id = :id
+                        RETURNING
+                            id,
+                            project_id,
+                            email,
+                            github_login,
+                            role_code,
+                            invited_by,
+                            status,
+                            clerk_invitation_id,
+                            created_at,
+                            accepted_at
+                        """
+                    ),
+                    {
+                        "id": str(existing["id"]),
+                        "github_login": normalized_github,
+                        "role_code": normalized_role,
+                        "invited_by": principal.user_id,
+                        "clerk_invitation_id": clerk_invitation_id,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to update invitation")
+            return _to_invitation_response(dict(row))
+
+        row = (
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO pending_project_invitations (
+                        id,
+                        project_id,
+                        email,
+                        github_login,
+                        role_code,
+                        invited_by,
+                        status,
+                        clerk_invitation_id
+                    ) VALUES (
+                        :id,
+                        :project_id,
+                        :email,
+                        :github_login,
+                        :role_code,
+                        :invited_by,
+                        'pending',
+                        :clerk_invitation_id
+                    )
+                    RETURNING
+                        id,
+                        project_id,
+                        email,
+                        github_login,
+                        role_code,
+                        invited_by,
+                        status,
+                        clerk_invitation_id,
+                        created_at,
+                        accepted_at
+                    """
+                ),
+                {
+                    "id": invitation_id,
+                    "project_id": canonical_project_id,
+                    "email": normalized_email,
+                    "github_login": normalized_github,
+                    "role_code": normalized_role,
+                    "invited_by": principal.user_id,
+                    "clerk_invitation_id": clerk_invitation_id,
+                },
+            )
+            .mappings()
+            .first()
+        )
+
+    if not row:
+        raise HTTPException(status_code=500, detail="Failed to create invitation")
+    return _to_invitation_response(dict(row))
+
+
+@router.patch("/{project_id:path}/invitations/{invitation_id}", response_model=ProjectInvitationResponse)
+async def update_project_invitation(
+    project_id: str,
+    invitation_id: str,
+    request: UpdateProjectInvitationRequest,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> ProjectInvitationResponse:
+    """Update invitation status (typically revoke)."""
+    enforce_permission(principal, "analyses.create")
+    from sqlalchemy import text
+
+    engine = get_engine()
+    canonical_project_id, _repo_id = _resolve_project_lookup_keys(engine, project_id)
+
+    with engine.begin() as conn:
+        row = (
+            conn.execute(
+                text(
+                    """
+                    UPDATE pending_project_invitations
+                    SET
+                        status = :status,
+                        accepted_at = CASE
+                            WHEN :status = 'accepted' THEN NOW()
+                            ELSE accepted_at
+                        END
+                    WHERE id = :id
+                      AND project_id = :project_id
+                    RETURNING
+                        id,
+                        project_id,
+                        email,
+                        github_login,
+                        role_code,
+                        invited_by,
+                        status,
+                        clerk_invitation_id,
+                        created_at,
+                        accepted_at
+                    """
+                ),
+                {
+                    "id": invitation_id,
+                    "project_id": canonical_project_id,
+                    "status": request.status,
+                },
+            )
+            .mappings()
+            .first()
+        )
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    return _to_invitation_response(dict(row))

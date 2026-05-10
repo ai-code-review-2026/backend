@@ -1,0 +1,426 @@
+################################################################################
+# Makefile for Docker Operations - AI Code Review Backend
+################################################################################
+
+# Variables
+DOCKER_COMPOSE := docker-compose -f docker-compose.complete.yml
+DOCKER_BUILD := docker build -f Dockerfile.complete
+IMAGE_NAME := ai-review-backend
+IMAGE_TAG := latest
+FULL_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
+
+# Colors for output
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+RED := \033[0;31m
+NC := \033[0m # No Color
+
+.DEFAULT_GOAL := help
+
+################################################################################
+# Help
+################################################################################
+
+.PHONY: help
+help: ## Show this help message
+	@echo "$(GREEN)AI Code Review Backend - Docker Management$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Usage:$(NC)"
+	@echo "  make [target]"
+	@echo ""
+	@echo "$(YELLOW)Available targets:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
+
+################################################################################
+# Build
+################################################################################
+
+.PHONY: build
+build: ## Build production Docker image
+	@echo "$(GREEN)Building production image...$(NC)"
+	$(DOCKER_BUILD) --target runtime -t $(FULL_IMAGE) .
+	@echo "$(GREEN)✓ Built $(FULL_IMAGE)$(NC)"
+
+.PHONY: build-dev
+build-dev: ## Build development Docker image with hot reload
+	@echo "$(GREEN)Building development image...$(NC)"
+	$(DOCKER_BUILD) --target development -t $(IMAGE_NAME):dev .
+	@echo "$(GREEN)✓ Built $(IMAGE_NAME):dev$(NC)"
+
+.PHONY: build-worker
+build-worker: ## Build Celery worker Docker image
+	@echo "$(GREEN)Building worker image...$(NC)"
+	$(DOCKER_BUILD) --target worker -t $(IMAGE_NAME):worker .
+	@echo "$(GREEN)✓ Built $(IMAGE_NAME):worker$(NC)"
+
+.PHONY: build-all
+build-all: build build-dev build-worker ## Build all Docker images
+
+.PHONY: build-no-cache
+build-no-cache: ## Build production image without cache
+	@echo "$(GREEN)Building production image (no cache)...$(NC)"
+	$(DOCKER_BUILD) --target runtime --no-cache -t $(FULL_IMAGE) .
+	@echo "$(GREEN)✓ Built $(FULL_IMAGE)$(NC)"
+
+################################################################################
+# Run
+################################################################################
+
+.PHONY: up
+up: ## Start all services (detached)
+	@echo "$(GREEN)Starting all services...$(NC)"
+	$(DOCKER_COMPOSE) up -d
+	@echo "$(GREEN)✓ Services started$(NC)"
+	@echo "$(YELLOW)Run 'make logs' to view logs$(NC)"
+
+.PHONY: up-core
+up-core: ## Start core services only (postgres, redis, neo4j, minio)
+	@echo "$(GREEN)Starting core services...$(NC)"
+	$(DOCKER_COMPOSE) up -d postgres redis neo4j minio
+	@echo "$(GREEN)✓ Core services started$(NC)"
+
+.PHONY: up-backend
+up-backend: ## Start backend and core services
+	@echo "$(GREEN)Starting backend + core services...$(NC)"
+	$(DOCKER_COMPOSE) up -d postgres redis neo4j minio backend
+	@echo "$(GREEN)✓ Backend started$(NC)"
+
+.PHONY: up-monitoring
+up-monitoring: ## Start all services with monitoring (Prometheus + Grafana)
+	@echo "$(GREEN)Starting services with monitoring...$(NC)"
+	$(DOCKER_COMPOSE) --profile monitoring up -d
+	@echo "$(GREEN)✓ Services started with monitoring$(NC)"
+	@echo "$(YELLOW)Prometheus: http://localhost:9090$(NC)"
+	@echo "$(YELLOW)Grafana: http://localhost:3030 (admin/admin)$(NC)"
+
+.PHONY: down
+down: ## Stop and remove all containers
+	@echo "$(GREEN)Stopping all services...$(NC)"
+	$(DOCKER_COMPOSE) down
+	@echo "$(GREEN)✓ Services stopped$(NC)"
+
+.PHONY: down-v
+down-v: ## Stop and remove all containers + volumes (DESTRUCTIVE)
+	@echo "$(RED)⚠ This will delete all data (volumes)$(NC)"
+	@read -p "Are you sure? [y/N] " -n 1 -r; \
+	echo; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		$(DOCKER_COMPOSE) down -v; \
+		echo "$(GREEN)✓ Services stopped and volumes removed$(NC)"; \
+	else \
+		echo "$(YELLOW)Cancelled$(NC)"; \
+	fi
+
+.PHONY: restart
+restart: down up ## Restart all services
+
+.PHONY: restart-backend
+restart-backend: ## Restart backend service only
+	@echo "$(GREEN)Restarting backend...$(NC)"
+	$(DOCKER_COMPOSE) restart backend
+	@echo "$(GREEN)✓ Backend restarted$(NC)"
+
+.PHONY: restart-worker
+restart-worker: ## Restart worker service only
+	@echo "$(GREEN)Restarting worker...$(NC)"
+	$(DOCKER_COMPOSE) restart worker
+	@echo "$(GREEN)✓ Worker restarted$(NC)"
+
+################################################################################
+# Logs
+################################################################################
+
+.PHONY: logs
+logs: ## View logs from all services (follow)
+	$(DOCKER_COMPOSE) logs -f
+
+.PHONY: logs-backend
+logs-backend: ## View backend logs (follow)
+	$(DOCKER_COMPOSE) logs -f backend
+
+.PHONY: logs-worker
+logs-worker: ## View worker logs (follow)
+	$(DOCKER_COMPOSE) logs -f worker
+
+.PHONY: logs-postgres
+logs-postgres: ## View PostgreSQL logs (follow)
+	$(DOCKER_COMPOSE) logs -f postgres
+
+.PHONY: logs-redis
+logs-redis: ## View Redis logs (follow)
+	$(DOCKER_COMPOSE) logs -f redis
+
+.PHONY: logs-neo4j
+logs-neo4j: ## View Neo4j logs (follow)
+	$(DOCKER_COMPOSE) logs -f neo4j
+
+################################################################################
+# Database
+################################################################################
+
+.PHONY: migrate
+migrate: ## Run database migrations
+	@echo "$(GREEN)Running database migrations...$(NC)"
+	$(DOCKER_COMPOSE) exec backend alembic upgrade head
+	@echo "$(GREEN)✓ Migrations complete$(NC)"
+
+.PHONY: migrate-create
+migrate-create: ## Create new migration (usage: make migrate-create m=add_new_field)
+	@if [ -z "$(m)" ]; then \
+		echo "$(RED)Error: Migration message required$(NC)"; \
+		echo "$(YELLOW)Usage: make migrate-create m=add_new_field$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Creating migration: $(m)$(NC)"
+	$(DOCKER_COMPOSE) exec backend alembic revision --autogenerate -m "$(m)"
+	@echo "$(GREEN)✓ Migration created$(NC)"
+
+.PHONY: migrate-downgrade
+migrate-downgrade: ## Rollback last migration
+	@echo "$(YELLOW)⚠ Rolling back last migration$(NC)"
+	$(DOCKER_COMPOSE) exec backend alembic downgrade -1
+	@echo "$(GREEN)✓ Migration rolled back$(NC)"
+
+.PHONY: db-shell
+db-shell: ## Open PostgreSQL shell
+	$(DOCKER_COMPOSE) exec postgres psql -U postgres ai_code_review
+
+.PHONY: db-backup
+db-backup: ## Backup PostgreSQL database
+	@echo "$(GREEN)Creating database backup...$(NC)"
+	@mkdir -p backups
+	$(DOCKER_COMPOSE) exec postgres pg_dump -U postgres ai_code_review > backups/backup_$$(date +%Y%m%d_%H%M%S).sql
+	@echo "$(GREEN)✓ Backup saved to backups/$(NC)"
+
+.PHONY: db-restore
+db-restore: ## Restore PostgreSQL database (usage: make db-restore file=backups/backup_20260425_120000.sql)
+	@if [ -z "$(file)" ]; then \
+		echo "$(RED)Error: Backup file required$(NC)"; \
+		echo "$(YELLOW)Usage: make db-restore file=backups/backup_20260425_120000.sql$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)⚠ Restoring database from $(file)$(NC)"
+	cat $(file) | $(DOCKER_COMPOSE) exec -T postgres psql -U postgres ai_code_review
+	@echo "$(GREEN)✓ Database restored$(NC)"
+
+################################################################################
+# Status & Health
+################################################################################
+
+.PHONY: ps
+ps: ## Show running containers
+	$(DOCKER_COMPOSE) ps
+
+.PHONY: status
+status: ps ## Alias for ps
+
+.PHONY: health
+health: ## Check health of all services
+	@echo "$(GREEN)Checking service health...$(NC)"
+	@$(DOCKER_COMPOSE) ps --format json | python3 -c "\
+import json, sys; \
+containers = [json.loads(line) for line in sys.stdin]; \
+for c in containers: \
+    status = c.get('Health', 'N/A'); \
+    name = c.get('Service', 'unknown'); \
+    state = c.get('State', 'unknown'); \
+    print(f'{name:20} {state:10} {status}'); \
+" || $(DOCKER_COMPOSE) ps
+
+.PHONY: test-health
+test-health: ## Test backend health endpoint
+	@echo "$(GREEN)Testing health endpoint...$(NC)"
+	@curl -f http://localhost:8000/health && echo "\n$(GREEN)✓ Backend is healthy$(NC)" || echo "\n$(RED)✗ Backend is unhealthy$(NC)"
+
+################################################################################
+# Development
+################################################################################
+
+.PHONY: shell
+shell: ## Open shell in backend container
+	$(DOCKER_COMPOSE) exec backend bash
+
+.PHONY: shell-worker
+shell-worker: ## Open shell in worker container
+	$(DOCKER_COMPOSE) exec worker bash
+
+.PHONY: python
+python: ## Open Python REPL in backend container
+	$(DOCKER_COMPOSE) exec backend python
+
+.PHONY: test
+test: ## Run tests in backend container
+	$(DOCKER_COMPOSE) exec backend pytest tests/ -v
+
+.PHONY: lint
+lint: ## Run linters in backend container
+	$(DOCKER_COMPOSE) exec backend ruff check app/
+
+.PHONY: format
+format: ## Format code in backend container
+	$(DOCKER_COMPOSE) exec backend ruff format app/
+
+################################################################################
+# Celery
+################################################################################
+
+.PHONY: celery-status
+celery-status: ## Check Celery worker status
+	$(DOCKER_COMPOSE) exec worker celery -A app.workers.celery_app inspect ping
+
+.PHONY: celery-stats
+celery-stats: ## Show Celery worker statistics
+	$(DOCKER_COMPOSE) exec worker celery -A app.workers.celery_app inspect stats
+
+.PHONY: celery-active
+celery-active: ## Show active Celery tasks
+	$(DOCKER_COMPOSE) exec worker celery -A app.workers.celery_app inspect active
+
+.PHONY: celery-purge
+celery-purge: ## Purge all Celery queues (DESTRUCTIVE)
+	@echo "$(RED)⚠ This will delete all queued tasks$(NC)"
+	@read -p "Are you sure? [y/N] " -n 1 -r; \
+	echo; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		$(DOCKER_COMPOSE) exec worker celery -A app.workers.celery_app purge -f; \
+		echo "$(GREEN)✓ Queues purged$(NC)"; \
+	else \
+		echo "$(YELLOW)Cancelled$(NC)"; \
+	fi
+
+.PHONY: celery-flower
+celery-flower: ## Start Celery Flower monitoring UI (port 5555)
+	@echo "$(GREEN)Starting Flower...$(NC)"
+	$(DOCKER_COMPOSE) exec -d worker celery -A app.workers.celery_app flower --port=5555
+	@echo "$(GREEN)✓ Flower started at http://localhost:5555$(NC)"
+
+.PHONY: scale-workers
+scale-workers: ## Scale worker containers (usage: make scale-workers n=5)
+	@if [ -z "$(n)" ]; then \
+		echo "$(RED)Error: Number of workers required$(NC)"; \
+		echo "$(YELLOW)Usage: make scale-workers n=5$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Scaling workers to $(n)...$(NC)"
+	$(DOCKER_COMPOSE) up -d --scale worker=$(n)
+	@echo "$(GREEN)✓ Scaled to $(n) workers$(NC)"
+
+################################################################################
+# Monitoring
+################################################################################
+
+.PHONY: metrics
+metrics: ## Show backend metrics (Prometheus format)
+	@curl -s http://localhost:8000/metrics
+
+.PHONY: prometheus
+prometheus: ## Open Prometheus UI in browser
+	@echo "$(GREEN)Opening Prometheus...$(NC)"
+	@open http://localhost:9090 || xdg-open http://localhost:9090 || echo "$(YELLOW)Open http://localhost:9090 in your browser$(NC)"
+
+.PHONY: grafana
+grafana: ## Open Grafana UI in browser
+	@echo "$(GREEN)Opening Grafana...$(NC)"
+	@open http://localhost:3030 || xdg-open http://localhost:3030 || echo "$(YELLOW)Open http://localhost:3030 in your browser$(NC)"
+
+################################################################################
+# Cleanup
+################################################################################
+
+.PHONY: clean
+clean: ## Remove stopped containers and dangling images
+	@echo "$(GREEN)Cleaning up...$(NC)"
+	docker container prune -f
+	docker image prune -f
+	@echo "$(GREEN)✓ Cleanup complete$(NC)"
+
+.PHONY: clean-all
+clean-all: ## Remove all containers, images, volumes (DESTRUCTIVE)
+	@echo "$(RED)⚠ This will delete EVERYTHING$(NC)"
+	@read -p "Are you sure? [y/N] " -n 1 -r; \
+	echo; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		$(DOCKER_COMPOSE) down -v --rmi all; \
+		docker system prune -af --volumes; \
+		echo "$(GREEN)✓ All cleaned up$(NC)"; \
+	else \
+		echo "$(YELLOW)Cancelled$(NC)"; \
+	fi
+
+.PHONY: reset
+reset: down-v build up migrate ## Full reset: destroy volumes, rebuild, start fresh
+	@echo "$(GREEN)✓ Full reset complete$(NC)"
+
+################################################################################
+# Utilities
+################################################################################
+
+.PHONY: neo4j
+neo4j: ## Open Neo4j Browser in browser
+	@echo "$(GREEN)Opening Neo4j Browser...$(NC)"
+	@open http://localhost:7474 || xdg-open http://localhost:7474 || echo "$(YELLOW)Open http://localhost:7474 in your browser$(NC)"
+
+.PHONY: minio
+minio: ## Open MinIO Console in browser
+	@echo "$(GREEN)Opening MinIO Console...$(NC)"
+	@open http://localhost:9001 || xdg-open http://localhost:9001 || echo "$(YELLOW)Open http://localhost:9001 in your browser$(NC)"
+
+.PHONY: api-docs
+api-docs: ## Open API docs (Swagger UI) in browser
+	@echo "$(GREEN)Opening API docs...$(NC)"
+	@open http://localhost:8000/docs || xdg-open http://localhost:8000/docs || echo "$(YELLOW)Open http://localhost:8000/docs in your browser$(NC)"
+
+.PHONY: env-check
+env-check: ## Validate .env file exists
+	@if [ -f "../../.env" ]; then \
+		echo "$(GREEN)✓ .env file found$(NC)"; \
+	else \
+		echo "$(RED)✗ .env file not found$(NC)"; \
+		echo "$(YELLOW)Copy ../../.env.example to ../../.env and configure it$(NC)"; \
+		exit 1; \
+	fi
+
+################################################################################
+# CI/CD
+################################################################################
+
+.PHONY: ci-build
+ci-build: ## Build for CI (with cache)
+	$(DOCKER_BUILD) --target runtime --cache-from $(FULL_IMAGE) -t $(FULL_IMAGE) .
+
+.PHONY: ci-test
+ci-test: ## Run tests in CI
+	$(DOCKER_COMPOSE) run --rm backend pytest tests/ -v --tb=short
+
+.PHONY: ci-lint
+ci-lint: ## Run linters in CI
+	$(DOCKER_COMPOSE) run --rm backend ruff check app/ --output-format=github
+
+################################################################################
+# Info
+################################################################################
+
+.PHONY: version
+version: ## Show Docker and compose versions
+	@echo "$(GREEN)Docker version:$(NC)"
+	@docker --version
+	@echo "$(GREEN)Docker Compose version:$(NC)"
+	@docker-compose --version
+
+.PHONY: info
+info: ## Show system info
+	@echo "$(GREEN)=== AI Code Review Backend - System Info ===$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Docker:$(NC)"
+	@docker --version
+	@echo "$(YELLOW)Docker Compose:$(NC)"
+	@docker-compose --version
+	@echo ""
+	@echo "$(YELLOW)Images:$(NC)"
+	@docker images | grep ai-review || echo "No images found"
+	@echo ""
+	@echo "$(YELLOW)Volumes:$(NC)"
+	@docker volume ls | grep ai-review || echo "No volumes found"
+	@echo ""
+	@echo "$(YELLOW)Networks:$(NC)"
+	@docker network ls | grep ai-review || echo "No networks found"

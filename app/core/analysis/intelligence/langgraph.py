@@ -84,10 +84,34 @@ class LangGraphRetriever:
 
 
 class LangGraphLLMService:
-    """Compatibility adapter over the canonical LangGraph LLM service."""
+    """
+    Compatibility adapter over the canonical LangGraph LLM service.
+    Supports gateway-powered observability when context IDs are provided.
+    """
 
-    def __init__(self, llm_service: RagGraphLLMService | None = None) -> None:
-        self._llm_service = llm_service or RagGraphLLMService()
+    def __init__(
+        self,
+        llm_service: RagGraphLLMService | None = None,
+        *,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        analysis_id: str | None = None,
+    ) -> None:
+        """
+        Initialize LLM service with optional gateway context.
+        
+        Args:
+            llm_service: Optional pre-initialized service
+            user_id: User ID for gateway observability
+            project_id: Project ID for gateway cost tracking
+            analysis_id: Analysis ID for gateway trace correlation
+        """
+        self._llm_service = llm_service or RagGraphLLMService(
+            user_id=user_id,
+            project_id=project_id,
+            analysis_id=analysis_id,
+            use_gateway=True,  # Enable gateway by default for observability
+        )
 
     def generate_findings(
         self,

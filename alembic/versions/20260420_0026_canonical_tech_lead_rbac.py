@@ -160,7 +160,7 @@ def upgrade() -> None:
         """
         INSERT INTO user_roles (id, user_id, role_id)
         SELECT
-            'ur_tl_' || md5(ur.user_id || ':tech_lead'),
+            'ur_tl_' || md5(ur.user_id || ':' || 'tech_lead'),
             ur.user_id,
             tl.id
         FROM user_roles ur
@@ -196,10 +196,24 @@ def upgrade() -> None:
 
     op.execute(
         """
-        UPDATE pending_project_invitations
-        SET role_code = 'tech_lead',
-            updated_at = NOW()
-        WHERE role_code IN ('reviewer', 'reviewer_lead', 'reviewer_senior', 'reviewer_junior')
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'pending_project_invitations'
+                  AND column_name = 'updated_at'
+            ) THEN
+                UPDATE pending_project_invitations
+                SET role_code = 'tech_lead',
+                    updated_at = NOW()
+                WHERE role_code IN ('reviewer', 'reviewer_lead', 'reviewer_senior', 'reviewer_junior');
+            ELSE
+                UPDATE pending_project_invitations
+                SET role_code = 'tech_lead'
+                WHERE role_code IN ('reviewer', 'reviewer_lead', 'reviewer_senior', 'reviewer_junior');
+            END IF;
+        END $$;
         """
     )
 

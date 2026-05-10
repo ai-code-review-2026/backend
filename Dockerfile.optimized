@@ -1,0 +1,118 @@
+# ==========================================
+# OPTIMIZED BACKEND DOCKERFILE (uses ML base)
+# ==========================================
+# Build time: 5-10 minutes (vs 50+ minutes)
+# Strategy: Heavy ML deps in separate base image
+# ==========================================
+
+# Use pre-built ML base image
+FROM ai-review-ml-base:latest AS python-ml
+
+# ==========================================
+# Stage 1: System Tools & Static Analysis
+# ==========================================
+FROM python:3.11-slim AS tools
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_DEFAULT_TIMEOUT=1000
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_RETRIES=10
+ENV CUDA_VISIBLE_DEVICES=""
+ENV FORCE_CUDA=0
+
+# Install system dependencies (Node.js, Ruby, Go staticcheck)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        nodejs \
+        npm \
+        ruby \
+        ruby-dev \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js tools (ESLint, Stylelint)
+RUN npm install -g \
+        eslint@^8 \
+        @eslint/js \
+        stylelint \
+        stylelint-config-standard \
+    && npm cache clean --force
+
+# Ruby tools (RuboCop)
+RUN gem install rubocop --no-document
+
+# Go staticcheck
+RUN curl -sSfL \
+        https://github.com/dominikh/go-tools/releases/latest/download/staticcheck_linux_amd64.tar.gz \
+    | tar -xzf - -C /usr/local/bin --strip-components=1 staticcheck/staticcheck \
+    && chmod +x /usr/local/bin/staticcheck
+
+# ==========================================
+# Stage 2: Python Dependencies (WITHOUT ML)
+# ==========================================
+FROM python-ml AS python-deps
+
+WORKDIR /app
+
+# Copy ML packages from base image
+COPY --from=python-ml /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=python-ml /usr/local/bin /usr/local/bin
+
+# Copy Python dependency files
+COPY pyproject.toml poetry.lock /app/
+
+# Install Poetry
+RUN pip install --no-cache-dir poetry==1.8.3 \
+    && poetry config virtualenvs.create false \
+    && poetry config installer.max-workers 1
+
+# Install app dependencies (SKIPS torch/transformers - already installed)
+# This step is MUCH faster (~5 min instead of 50 min)
+RUN poetry install --no-interaction --no-ansi --no-root --only main || \
+    poetry install --no-interaction --no-ansi --no-root --only main
+
+# ==========================================
+# Stage 3: Runtime (Final Image)
+# ==========================================
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_VISIBLE_DEVICES=""
+ENV PATH="/usr/local/bin:${PATH}"
+
+# Install ONLY runtime system deps (no build-essential)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        nodejs \
+        npm \
+        ruby \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy tools from tools stage
+COPY --from=tools /usr/local/bin/staticcheck /usr/local/bin/staticcheck
+COPY --from=tools /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=tools /usr/local/bin/eslint /usr/local/bin/eslint
+COPY --from=tools /usr/local/bin/stylelint /usr/local/bin/stylelint
+COPY --from=tools /var/lib/gems /var/lib/gems
+COPY --from=tools /usr/local/bundle /usr/local/bundle
+
+# Copy Python packages (including ML from base)
+COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=python-deps /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY . /app
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

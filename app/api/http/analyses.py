@@ -251,6 +251,7 @@ class AuthSyncResponse(BaseModel):
     user_id: str
     email: str
     display_name: str | None
+    github_login: str | None = None
     canonical_role: str
     roles: list[str]
     permissions: list[str]
@@ -265,6 +266,7 @@ class AuthSyncPayload(BaseModel):
 
     email: str | None = None
     display_name: str | None = None
+    github_login: str | None = None
     role: str | None = None
     org_id: str | None = None
     org_slug: str | None = None
@@ -298,6 +300,10 @@ async def sync_authenticated_user(
     if payload is not None and isinstance(payload.email, str) and payload.email.strip():
         payload_email = payload.email.strip().lower()
 
+    payload_github_login = None
+    if payload is not None and isinstance(payload.github_login, str) and payload.github_login.strip():
+        payload_github_login = payload.github_login.strip().lower()
+
     email = (principal.email or "").strip().lower()
     if _is_placeholder_email(email):
         if payload_email:
@@ -310,6 +316,10 @@ async def sync_authenticated_user(
     display_name = principal.display_name
     if payload is not None and isinstance(payload.display_name, str) and payload.display_name.strip():
         display_name = payload.display_name.strip()
+
+    github_login = principal.github_login
+    if not github_login:
+        github_login = payload_github_login
 
     role_to_sync = principal.role or "developer"
     if payload is not None and isinstance(payload.role, str) and payload.role.strip():
@@ -360,6 +370,7 @@ async def sync_authenticated_user(
             user_id=synced_user.id,
             email=synced_user.email,
             display_name=synced_user.display_name,
+            github_login=github_login,
             roles=synced_user.roles,
             canonical_role=canonical_role,
             permissions=permissions,
@@ -375,6 +386,7 @@ async def sync_authenticated_user(
         user_id=principal.user_id,
         email=email,
         display_name=display_name,
+        github_login=github_login,
         canonical_role=canonical_role,
         roles=principal_roles,
         permissions=sorted(set(principal.permissions or []) | set(permissions_for_roles([canonical_role]))),

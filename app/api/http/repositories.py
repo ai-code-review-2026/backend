@@ -699,7 +699,7 @@ async def import_repository_full(
         try:
             rbac_repo.assign_project_role(
                 user_id=principal.user_id,
-                project_id=repo_id,
+                project_id=project_id,
                 role_code="admin",
                 assigned_by=principal.user_id,
                 notes="Project creator via GitHub import",
@@ -716,7 +716,8 @@ async def import_repository_full(
             if not member.github_login:
                 continue
             # Skip creator
-            if principal and member.github_login.lower() == (principal.github_login or "").lower():
+            principal_github_login = (getattr(principal, "github_login", None) or "").strip().lower() if principal else ""
+            if principal_github_login and member.github_login.lower() == principal_github_login:
                 continue
             try:
                 with engine.begin() as conn:

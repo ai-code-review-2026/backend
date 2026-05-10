@@ -15,16 +15,33 @@ from pydantic import BaseModel, Field
 from app.core.context_management import ContextManager, StalenessChecker
 from app.core.project_comprehension import ProjectComprehensionService
 from app.integrations.graph_database.neo4j_client import get_neo4j_client
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
-# Initialize services (would use dependency injection in production)
-_neo4j_client = get_neo4j_client()
-_comprehension_service = ProjectComprehensionService(neo4j_client=_neo4j_client)
-_context_manager = ContextManager(neo4j_client=_neo4j_client)
+_neo4j_client = None
+_comprehension_service: ProjectComprehensionService | None = None
+_context_manager: ContextManager | None = None
 _staleness_checker = StalenessChecker()
+
+
+def _project_services() -> tuple[Any, ProjectComprehensionService, ContextManager]:
+    global _neo4j_client, _comprehension_service, _context_manager
+    if not settings.NEO4J_ENABLED:
+        raise HTTPException(status_code=503, detail="Neo4j is disabled")
+    try:
+        if _neo4j_client is None:
+            _neo4j_client = get_neo4j_client()
+        if _comprehension_service is None:
+            _comprehension_service = ProjectComprehensionService(neo4j_client=_neo4j_client)
+        if _context_manager is None:
+            _context_manager = ContextManager(neo4j_client=_neo4j_client)
+        return _neo4j_client, _comprehension_service, _context_manager
+    except Exception as exc:
+        logger.warning("Project comprehension services unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Neo4j is unavailable") from exc
 
 
 # Request/Response models
@@ -94,7 +111,8 @@ async def get_project_profile(
     Returns structure, architecture, quality indicators, and descriptions.
     """
     try:
-        profile = await _comprehension_service.get_profile(repo_id)
+        _, comprehension_service, _ = _project_services()
+        profile = await comprehension_service.get_profile(repo_id)
 
         if not profile:
             raise HTTPException(
@@ -142,13 +160,14 @@ async def analyze_project(
             )
 
         # Get existing version if not forcing
+        _, comprehension_service, _ = _project_services()
         existing_version = 0
         if not request.force:
-            existing = await _comprehension_service.get_profile(repo_id)
+            existing = await comprehension_service.get_profile(repo_id)
             if existing:
                 existing_version = existing.context_version
 
-        profile = await _comprehension_service.analyze_repository(
+        profile = await comprehension_service.analyze_repository(
             repo_path=path,
             repo_id=repo_id,
             org_id=request.org_id,
@@ -186,7 +205,8 @@ async def get_project_description(
     Returns a user-friendly description suitable for display in the UI.
     """
     try:
-        profile = await _comprehension_service.get_profile(repo_id)
+        _, comprehension_service, _ = _project_services()
+        profile = await comprehension_service.get_profile(repo_id)
 
         if not profile:
             raise HTTPException(
@@ -217,7 +237,8 @@ async def get_context_status(
     Returns staleness status and recommendations for refresh.
     """
     try:
-        context = await _context_manager.get_context(repo_id, org_id=org_id)
+        _, _, context_manager = _project_services()
+        context = await context_manager.get_context(repo_id, org_id=org_id)
 
         staleness = _staleness_checker.check(
             last_updated=context.last_updated,
@@ -251,10 +272,11 @@ async def refresh_context(
     """
     try:
         from app.core.context_management import IncrementalUpdater
+        neo4j_client, _, context_manager = _project_services()
 
         updater = IncrementalUpdater(
-            context_manager=_context_manager,
-            neo4j_client=_neo4j_client,
+            context_manager=context_manager,
+            neo4j_client=neo4j_client,
         )
 
         result = await updater.update(
