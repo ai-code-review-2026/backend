@@ -79,16 +79,13 @@ async def _analysis_stale_recovery_loop(stop_event: asyncio.Event) -> None:
 async def lifespan(app: FastAPI):
     init_db()
     get_secret_store().bootstrap_from_env()
-
     # Initialize observability infrastructure (LLM traces + metrics)
     try:
         from app.observability import init_observability
-
         init_observability()
         logging.info("Observability infrastructure initialized (LLM traces + metrics)")
     except Exception:
         logging.exception("Failed to initialize observability infrastructure (non-fatal)")
-
     logger = logging.getLogger(__name__)
 
     # Initialise Neo4j schema (constraints, indexes, vector indexes) if enabled
