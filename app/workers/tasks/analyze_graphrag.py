@@ -14,11 +14,12 @@ The old analyze_pr.py task is kept for backward compatibility.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
+import uuid
 
 from app.core.analysis.repository_resolution import resolve_repository_scope
 from app.core.analysis.orchestrator import AnalysisOrchestrator
@@ -26,8 +27,8 @@ from app.core.analysis.graph.manager import GraphManager
 from app.core.analysis.history import AnalysisHistoryService, AnalysisStatus, AnalysisMetrics
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
-from app.data.repos.analyses_repo import AnalysesRepo
-from app.integrations.graph_database.neo4j_client import Neo4jClient
+from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput
+from app.core.design_patterns.pattern_analysis_service import get_pattern_analysis_service
 from app.settings import settings
 from app.workers.celery_app import celery_app
 
@@ -164,19 +165,46 @@ async def _run_graphrag_pipeline_async(
                 
                 # Store secret findings
                 for detection in scan_result.detections:
-                    analyses_repo.create_finding({
-                        "analysis_id": analysis_id,
-                        "source": "secret_scan",
-                        "file_path": detection.file_path,
-                        "line_start": detection.line_no,
-                        "line_end": detection.line_no,
-                        "severity": detection.match.severity,
-                        "category": "security",
-                        "message": detection.match.description,
-                        "confidence": detection.match.confidence,
-                    })
+                    fingerprint = hashlib.sha256(
+                        f"{analysis_id}:secret_scan:{detection.file_path}:{detection.line_no}:{detection.match.description}".encode(
+                            "utf-8"
+                        )
+                    ).hexdigest()
+                    analyses_repo.create_finding(
+                        CreateFindingInput(
+                            finding_id=uuid.uuid4().hex,
+                            analysis_id=analysis_id,
+                            source="secret_scan",
+                            file_path=detection.file_path,
+                            line_start=detection.line_no,
+                            line_end=detection.line_no,
+                            severity=detection.match.severity,
+                            category="security",
+                            message=detection.match.description,
+                            suggestion=None,
+                            confidence=detection.match.confidence,
+                            fingerprint=fingerprint,
+                            issue_type="secret_exposure",
+                            rule_id=getattr(detection.match, "rule_id", None),
+                            evidence={"detector": "entropy_scan"},
+                        )
+                    )
             except Exception as e:
                 logger.error(f"Secret scan failed for analysis {analysis_id}: {e}")
+
+        try:
+            analyses_repo.update_security_scan_result(
+                analysis_id=analysis_id,
+                diff_redacted=diff_redacted,
+                has_secrets=has_secrets,
+                redaction_stats={
+                    "has_secrets": has_secrets,
+                    "detections": len(scan_result.detections) if scan_result else 0,
+                },
+                purge_raw_diff=settings.PURGE_RAW_DIFF_AFTER_REDACTION,
+            )
+        except Exception as e:
+            logger.warning("Failed to persist security scan metadata for %s: %s", analysis_id, e)
         
         analyses_repo.update_status(
             analysis_id=analysis_id,
@@ -187,14 +215,7 @@ async def _run_graphrag_pipeline_async(
         # 4. Initialize services
         logger.info(f"Initializing GraphRAG services for analysis {analysis_id}")
         
-        neo4j_client = Neo4jClient(
-            uri=settings.NEO4J_URI,
-            user=settings.NEO4J_USER,
-            password=settings.NEO4J_PASSWORD,
-            database=settings.NEO4J_DATABASE,
-        )
-        
-        graph_manager = GraphManager(neo4j_client)
+        graph_manager = GraphManager()
         history_service = AnalysisHistoryService(graph_manager)
         
         if not analysis.project_id:
@@ -255,20 +276,159 @@ async def _run_graphrag_pipeline_async(
             analysis_id=analysis_id,
             incremental=settings.INCREMENTAL_INDEXING_ENABLED,
         )
+
+        # Persist GraphRAG findings in PostgreSQL with explicit provenance.
+        graph_rag_findings = orchestration_result.get("graph_rag_findings", [])
+        for finding in graph_rag_findings:
+            fingerprint = hashlib.sha256(
+                (
+                    f"{analysis_id}:llm_langgraph:{finding.get('file_path')}:{finding.get('line_start')}:"
+                    f"{finding.get('category')}:{finding.get('message')}"
+                ).encode("utf-8")
+            ).hexdigest()
+            analyses_repo.create_finding(
+                CreateFindingInput(
+                    finding_id=uuid.uuid4().hex,
+                    analysis_id=analysis_id,
+                    source=str(finding.get("source", "llm_langgraph")),
+                    file_path=finding.get("file_path"),
+                    line_start=finding.get("line_start"),
+                    line_end=finding.get("line_end"),
+                    severity=str(finding.get("severity", "WARN")),
+                    category=str(finding.get("category", "code_quality")),
+                    message=str(finding.get("message", "")),
+                    suggestion=finding.get("suggestion"),
+                    confidence=float(finding.get("confidence", 0.0)),
+                    fingerprint=fingerprint,
+                    issue_type="review_finding",
+                    rule_id=finding.get("rule_id"),
+                    evidence={
+                        "source": finding.get("source", "llm_langgraph"),
+                        "references": finding.get("references", []),
+                        "retrieval": finding.get("evidence", {}),
+                    },
+                )
+            )
         
         analyses_repo.update_status(
             analysis_id=analysis_id,
             stage="ORCHESTRATION_COMPLETE",
+            progress=80,
+        )
+        
+        # 6.5. Run pattern analysis (NEW)
+        logger.info(f"Running pattern analysis for analysis {analysis_id}")
+        
+        pattern_service = get_pattern_analysis_service()
+        pattern_result = await pattern_service.run_pattern_analysis(
+            analysis_id=analysis_id,
+            repository_path=resolved_scope.repo_path,
+            repository_name=resolved_scope.repo_id or "unknown",
+            diff_content=diff_redacted,
+        )
+        
+        logger.info(
+            f"Pattern analysis completed: {pattern_result.get('total_violations', 0)} violations, "
+            f"{pattern_result.get('findings_created', 0)} findings created"
+        )
+        
+        analyses_repo.update_status(
+            analysis_id=analysis_id,
+            stage="PATTERN_ANALYSIS_COMPLETE",
+            progress=85,
+            metadata_updates={
+                "pattern_analysis": pattern_result,
+            },
+        )
+        
+        # 6.6. Run multi-agent review (NEW)
+        logger.info(f"Running multi-agent review for analysis {analysis_id}")
+        
+        from app.agents.agent_dispatcher import dispatch_review
+        
+        # Extract changed files from parsed diff
+        changed_files = [file.file_path for file in parsed_diff.files if file.file_path]
+        
+        agent_findings = await dispatch_review(
+            diff_content=diff_redacted,
+            changed_files=changed_files,
+            project_type=analysis.metadata.get("project_type") if analysis.metadata else None,
+            repository_path=resolved_scope.repo_path,
+            metadata={
+                "analysis_id": analysis_id,
+                "repository_id": str(repository_id),
+                "project_id": str(project_id),
+            },
+        )
+        
+        # Persist multi-agent findings
+        agent_findings_count = 0
+        agent_findings_by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        
+        for finding in agent_findings:
+            fingerprint = hashlib.sha256(
+                (
+                    f"{analysis_id}:multi_agent:{finding.agent_id}:{finding.file_path}:{finding.line}:"
+                    f"{finding.category}:{finding.message}"
+                ).encode("utf-8")
+            ).hexdigest()
+            
+            analyses_repo.create_finding(
+                CreateFindingInput(
+                    finding_id=uuid.uuid4().hex,
+                    analysis_id=analysis_id,
+                    source=f"multi_agent:{finding.agent_id}",
+                    file_path=finding.file_path,
+                    line_start=finding.line,
+                    line_end=finding.line,
+                    severity=finding.severity,
+                    category=finding.category,
+                    message=finding.message,
+                    suggestion=finding.suggestion,
+                    confidence=finding.confidence,
+                    fingerprint=fingerprint,
+                    issue_type="agent_review",
+                    rule_id=finding.rule_id,
+                    evidence={
+                        "agent_id": finding.agent_id,
+                        "agent_evidence": finding.evidence,
+                    },
+                )
+            )
+            
+            agent_findings_count += 1
+            severity_lower = finding.severity.lower()
+            if severity_lower in agent_findings_by_severity:
+                agent_findings_by_severity[severity_lower] += 1
+        
+        logger.info(
+            f"Multi-agent review completed: {agent_findings_count} findings from {len(set(f.agent_id for f in agent_findings))} agents"
+        )
+        
+        analyses_repo.update_status(
+            analysis_id=analysis_id,
+            stage="MULTI_AGENT_COMPLETE",
             progress=90,
+            metadata_updates={
+                "multi_agent_review": {
+                    "total_findings": agent_findings_count,
+                    "findings_by_severity": agent_findings_by_severity,
+                    "agents_used": list(set(f.agent_id for f in agent_findings)),
+                },
+            },
         )
         
         # 7. Calculate metrics
+        total_findings = orchestration_result.get("total_findings", 0)
+        pattern_findings = pattern_result.get("findings_created", 0)
+        agent_findings_total = agent_findings_count
+        
         metrics = AnalysisMetrics(
-            total_findings=orchestration_result.get("total_findings", 0),
-            critical_findings=orchestration_result.get("critical_findings", 0),
-            high_findings=orchestration_result.get("high_findings", 0),
-            medium_findings=orchestration_result.get("medium_findings", 0),
-            low_findings=orchestration_result.get("low_findings", 0),
+            total_findings=total_findings + pattern_findings + agent_findings_total,
+            critical_findings=orchestration_result.get("critical_findings", 0) + pattern_result.get("violations_by_severity", {}).get("critical", 0) + agent_findings_by_severity.get("critical", 0),
+            high_findings=orchestration_result.get("high_findings", 0) + pattern_result.get("violations_by_severity", {}).get("high", 0) + agent_findings_by_severity.get("high", 0),
+            medium_findings=orchestration_result.get("medium_findings", 0) + pattern_result.get("violations_by_severity", {}).get("medium", 0) + agent_findings_by_severity.get("medium", 0),
+            low_findings=orchestration_result.get("low_findings", 0) + pattern_result.get("violations_by_severity", {}).get("low", 0) + agent_findings_by_severity.get("low", 0),
             files_analyzed=files_count,
             lines_of_code=additions_total + deletions_total,
         )
@@ -279,6 +439,22 @@ async def _run_graphrag_pipeline_async(
             metrics=metrics,
             status=AnalysisStatus.COMPLETED,
         )
+
+        # Record findings in graph history for run-over-run comparison.
+        for finding in graph_rag_findings:
+            await history_service.record_finding(
+                run_id,
+                {
+                    "type": str(finding.get("category", "code_quality")),
+                    "rule_id": finding.get("rule_id"),
+                    "severity": str(finding.get("severity", "WARN")),
+                    "file_path": finding.get("file_path"),
+                    "line_start": finding.get("line_start"),
+                    "line_end": finding.get("line_end"),
+                    "message": finding.get("message"),
+                    "source": finding.get("source", "llm_langgraph"),
+                },
+            )
         
         # 9. Compare with previous run
         logger.info(f"Comparing with previous run for analysis {analysis_id}")
@@ -306,10 +482,20 @@ async def _run_graphrag_pipeline_async(
                     "fixed_findings": comparison.total_fixed,
                     "persistent_findings": comparison.total_persistent,
                 },
+                "has_secrets": has_secrets,
+                "pattern_analysis": {
+                    "total_violations": pattern_result.get("total_violations", 0),
+                    "patterns_checked": pattern_result.get("patterns_checked", 0),
+                    "violations_by_severity": pattern_result.get("violations_by_severity", {}),
+                    "violations_by_pattern": pattern_result.get("violations_by_pattern", {}),
+                },
+                "multi_agent_review": {
+                    "total_findings": agent_findings_count,
+                    "findings_by_severity": agent_findings_by_severity,
+                    "agents_used": list(set(f.agent_id for f in agent_findings)),
+                },
             },
         )
-        
-        await neo4j_client.close()
         
         return {
             "analysis_id": analysis_id,
