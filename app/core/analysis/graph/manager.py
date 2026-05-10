@@ -13,6 +13,7 @@ Design: Service layer over Neo4j client
 
 from __future__ import annotations
 
+import re
 import logging
 from typing import Any
 
@@ -46,8 +47,15 @@ class GraphManager:
     - Optimized for code graph patterns
     """
     
-    def __init__(self) -> None:
-        self._client = get_neo4j_client()
+    def __init__(self, neo4j_client: Any | None = None) -> None:
+        # Keep compatibility with callers that pass an explicit client.
+        self._client = neo4j_client or get_neo4j_client()
+
+    def _sanitize_identifier(self, value: str, *, kind: str) -> str:
+        """Allow only alphanumeric + underscore labels/types in dynamic Cypher parts."""
+        if not isinstance(value, str) or not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", value):
+            raise ValueError(f"Invalid {kind}: {value!r}")
+        return value
     
     def initialize_schema(self) -> None:
         """
@@ -315,3 +323,73 @@ class GraphManager:
         
         result = self._client.execute_query(query, {"node_id": node_id})
         return result[0]["count"] > 0 if result else False
+
+    async def upsert_node_async(self, label: str, properties: dict[str, Any]) -> dict[str, Any]:
+        """Async helper used by history services with dynamic labels."""
+        safe_label = self._sanitize_identifier(label, kind="label")
+        node_id = properties.get("id")
+        if not node_id:
+            raise ValueError(f"upsert_node requires an 'id' property for label {safe_label}")
+
+        query = f"""
+        MERGE (n:{safe_label} {{id: $id}})
+        SET n += $props
+        RETURN n
+        """
+        result = self._client.execute_query(query, {"id": node_id, "props": properties})
+        return dict(result[0]["n"]) if result else {}
+
+    async def update_node_async(self, label: str, node_id: str, properties: dict[str, Any]) -> dict[str, Any]:
+        safe_label = self._sanitize_identifier(label, kind="label")
+        query = f"""
+        MATCH (n:{safe_label} {{id: $id}})
+        SET n += $props
+        RETURN n
+        """
+        result = self._client.execute_query(query, {"id": node_id, "props": properties})
+        return dict(result[0]["n"]) if result else {}
+
+    async def get_node_async(self, label: str, node_id: str) -> dict[str, Any] | None:
+        safe_label = self._sanitize_identifier(label, kind="label")
+        query = f"""
+        MATCH (n:{safe_label} {{id: $id}})
+        RETURN n
+        LIMIT 1
+        """
+        result = self._client.execute_query(query, {"id": node_id})
+        if not result:
+            return None
+        return dict(result[0]["n"])
+
+    async def upsert_relationship_async(
+        self,
+        *,
+        from_label: str,
+        from_id: str,
+        to_label: str,
+        to_id: str,
+        rel_type: str,
+        properties: dict[str, Any] | None = None,
+    ) -> bool:
+        safe_from_label = self._sanitize_identifier(from_label, kind="label")
+        safe_to_label = self._sanitize_identifier(to_label, kind="label")
+        safe_rel_type = self._sanitize_identifier(rel_type, kind="relationship type")
+        query = f"""
+        MATCH (a:{safe_from_label} {{id: $from_id}})
+        MATCH (b:{safe_to_label} {{id: $to_id}})
+        MERGE (a)-[r:{safe_rel_type}]->(b)
+        SET r += $props
+        RETURN r
+        """
+        result = self._client.execute_query(
+            query,
+            {
+                "from_id": from_id,
+                "to_id": to_id,
+                "props": properties or {},
+            },
+        )
+        return len(result) > 0
+
+    async def query_async(self, cypher: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        return self._client.execute_query(cypher, parameters or {})

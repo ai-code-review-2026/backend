@@ -122,8 +122,62 @@ class OpenAIProvider(BaseLLMProvider):
 _PROVIDER_CACHE: BaseLLMProvider | None = None
 
 
-def get_llm_provider() -> BaseLLMProvider:
+def get_llm_provider(
+    *,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    analysis_id: str | None = None,
+    use_gateway: bool = True,
+) -> BaseLLMProvider:
+    """
+    Get LLM provider with optional gateway routing.
+    
+    Args:
+        user_id: User ID for gateway observability + rate limiting
+        project_id: Project ID for gateway cost tracking
+        analysis_id: Analysis ID for gateway trace correlation
+        use_gateway: If True, use new LLM Gateway with full observability.
+                     If False, use legacy direct providers (Ollama/Anthropic/OpenAI).
+                     
+    Returns:
+        BaseLLMProvider instance (either GatewayLLMProvider or legacy provider)
+        
+    Gateway benefits:
+        - Intelligent routing (sensitivity, cost, performance, context)
+        - Automatic fallback chains (provider fails -> fallback -> success)
+        - Full observability (PostgreSQL traces, Prometheus, Langfuse, OTEL)
+        - Rate limiting (per-provider + per-user)
+        - Prompt caching (Redis LRU, ~30% hit rate)
+        - WebSocket live progress
+    """
     global _PROVIDER_CACHE  # noqa: PLW0603
+    
+    # If gateway is enabled AND we have context IDs, use gateway provider
+    if use_gateway and (user_id or project_id or analysis_id):
+        try:
+            from analysis.langGraph.raggraph.gateway_llm_provider import create_gateway_provider
+            from app.gateway.request_context import SensitivityLevel, CostTarget, Priority
+            
+            logger.info(
+                "Using LLM Gateway provider with observability (user=%s, project=%s, analysis=%s)",
+                user_id, project_id, analysis_id
+            )
+            return create_gateway_provider(
+                user_id=user_id,
+                project_id=project_id,
+                analysis_id=analysis_id,
+                sensitivity=SensitivityLevel.INTERNAL,  # Default: prefer Ollama but allow cloud
+                cost_target=CostTarget.BALANCED,  # Default: balance cost/quality
+                priority=Priority.NORMAL,  # Default: <10s latency
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to init LLM Gateway provider: %s — falling back to legacy provider",
+                exc,
+                exc_info=True,
+            )
+    
+    # Legacy provider (cache singleton for performance)
     if _PROVIDER_CACHE is not None:
         return _PROVIDER_CACHE
 
@@ -135,7 +189,7 @@ def get_llm_provider() -> BaseLLMProvider:
             _PROVIDER_CACHE = OpenAIProvider()
         else:
             _PROVIDER_CACHE = OllamaProvider()
-        logger.info("LLM provider initialized: %s", provider_name)
+        logger.info("Legacy LLM provider initialized: %s", provider_name)
     except Exception as exc:
         logger.warning("Failed to init LLM provider '%s': %s — falling back to Ollama", provider_name, exc)
         _PROVIDER_CACHE = OllamaProvider()
@@ -169,12 +223,46 @@ class _LLMStrictOutput(BaseModel):
 class RagGraphLLMService:
     """
     LLM generation with strict JSON contract.
-    Provider is selected from settings.LLM_PROVIDER.
+    Provider is selected from settings.LLM_PROVIDER or uses new LLM Gateway.
     KB rules referenced in retrieval are injected as priority context.
+    
+    Gateway mode (when user_id/project_id/analysis_id provided):
+        - Intelligent routing (sensitivity, cost, performance, context)
+        - Automatic fallback chains (Anthropic → OpenAI → Ollama)
+        - Full observability (PostgreSQL traces, Prometheus, Langfuse, OTEL)
+        - Rate limiting (per-provider + per-user)
+        - Prompt caching (Redis LRU, ~30% hit rate)
+        - WebSocket live progress
     """
 
-    def __init__(self, llm_provider: BaseLLMProvider | None = None) -> None:
-        self._provider = llm_provider or get_llm_provider()
+    def __init__(
+        self,
+        llm_provider: BaseLLMProvider | None = None,
+        *,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        analysis_id: str | None = None,
+        use_gateway: bool = True,
+    ) -> None:
+        """
+        Initialize LLM service with optional gateway observability.
+        
+        Args:
+            llm_provider: Optional pre-initialized provider (for testing/DI)
+            user_id: User ID for gateway observability + rate limiting
+            project_id: Project ID for gateway cost tracking
+            analysis_id: Analysis ID for gateway trace correlation
+            use_gateway: If True and IDs provided, use gateway with full observability
+        """
+        self._user_id = user_id
+        self._project_id = project_id
+        self._analysis_id = analysis_id
+        self._provider = llm_provider or get_llm_provider(
+            user_id=user_id,
+            project_id=project_id,
+            analysis_id=analysis_id,
+            use_gateway=use_gateway,
+        )
 
     async def generate(
         self,

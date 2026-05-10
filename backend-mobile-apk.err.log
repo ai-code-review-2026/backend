@@ -1,0 +1,106 @@
+tree-sitter not available, chunking will use fallback
+INFO:     Started server process [35544]
+INFO:     Waiting for application startup.
+Neo4j unavailable: Couldn't connect to localhost:7687 (resolved to ('[::1]:7687', '127.0.0.1:7687')):
+Failed to establish connection to ResolvedIPv6Address(('::1', 7687, 0, 0)) (reason [WinError 10061] No connection could be made because the target machine actively refused it)
+Failed to establish connection to ResolvedIPv4Address(('127.0.0.1', 7687)) (reason [WinError 10061] No connection could be made because the target machine actively refused it)
+Neo4j schema init failed (non-fatal — service will continue)
+Traceback (most recent call last):
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_async_compat\network\_bolt_socket.py", line 415, in _connect_secure
+    s.connect(resolved_address)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionRefusedError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\io\_bolt_socket.py", line 328, in connect
+    s = cls._connect_secure(
+        resolved_address,
+    ...<3 lines>...
+        ssl_context,
+    )
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_async_compat\network\_bolt_socket.py", line 432, in _connect_secure
+    raise ServiceUnavailable(
+    ...<2 lines>...
+    ) from error
+neo4j.exceptions.ServiceUnavailable: Failed to establish connection to ResolvedIPv6Address(('::1', 7687, 0, 0)) (reason [WinError 10061] No connection could be made because the target machine actively refused it)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\app\main.py", line 82, in lifespan
+    neo4j = get_neo4j_client()
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\app\integrations\graph_database\neo4j_client.py", line 924, in get_neo4j_client
+    return Neo4jClient()
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\app\integrations\graph_database\neo4j_client.py", line 90, in __init__
+    self._connect()
+    ~~~~~~~~~~~~~^^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\app\integrations\graph_database\neo4j_client.py", line 105, in _connect
+    self._driver.verify_connectivity()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\driver.py", line 1090, in verify_connectivity
+    self._get_server_info(session_config)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\driver.py", line 1305, in _get_server_info
+    return session._get_server_info()
+           ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\work\session.py", line 183, in _get_server_info
+    self._connect(
+    ~~~~~~~~~~~~~^
+        READ_ACCESS, liveness_check_timeout=0, unprepared=True
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\work\session.py", line 136, in _connect
+    super()._connect(
+    ~~~~~~~~~~~~~~~~^
+        access_mode, auth=self._config.auth, **acquire_kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\work\workspace.py", line 199, in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+                       ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\io\_pool.py", line 676, in acquire
+    return self._acquire(
+           ~~~~~~~~~~~~~^
+        self.address, auth, deadline, liveness_check_timeout, unprepared
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\io\_pool.py", line 417, in _acquire
+    return connection_creator()
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\io\_pool.py", line 230, in connection_creator
+    connection = self.opener(
+        address, auth or self.pool_config.auth, deadline
+    )
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\io\_pool.py", line 637, in opener
+    return Bolt.open(
+           ~~~~~~~~~^
+        addr,
+        ^^^^^
+    ...<3 lines>...
+        pool_config=pool_config,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\io\_bolt.py", line 368, in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+                                           ~~~~~~~~~~~~~~~~~~^
+        address,
+        ^^^^^^^^
+    ...<4 lines>...
+        keep_alive=pool_config.keep_alive,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend\.venv\Lib\site-packages\neo4j\_sync\io\_bolt_socket.py", line 380, in connect
+    raise ServiceUnavailable(
+    ...<2 lines>...
+    ) from errors[0]
+neo4j.exceptions.ServiceUnavailable: Couldn't connect to localhost:7687 (resolved to ('[::1]:7687', '127.0.0.1:7687')):
+Failed to establish connection to ResolvedIPv6Address(('::1', 7687, 0, 0)) (reason [WinError 10061] No connection could be made because the target machine actively refused it)
+Failed to establish connection to ResolvedIPv4Address(('127.0.0.1', 7687)) (reason [WinError 10061] No connection could be made because the target machine actively refused it)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

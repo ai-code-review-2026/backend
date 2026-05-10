@@ -10,3 +10,18 @@ __pycache__/
 *.log
 tmp/
 temp/
+
+# runtime data
+qdrant_storage/
+storage/
+data/
+vector_store/
+
+# Poetry cache
+poetry.lock.bak
+.poetry-cache/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

@@ -445,3 +445,159 @@ async def get_analysis_run(
     except Exception as e:
         logger.error(f"Failed to get analysis run: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Graph Visualization Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+class GraphVisualizationRequest(BaseModel):
+    """Request for graph visualization data."""
+    node_type: Optional[str] = None
+    rel_type: Optional[str] = None
+    search: Optional[str] = None
+    file_path: Optional[str] = None
+    limit: int = 100
+
+
+class GraphVisualizationResponse(BaseModel):
+    """Response with graph data for visualization."""
+    nodes: list[dict[str, Any]]
+    relationships: list[dict[str, Any]]
+
+
+@router.get("/graph", response_model=GraphVisualizationResponse)
+async def get_graph_visualization(
+    node_type: Optional[str] = None,
+    rel_type: Optional[str] = None,
+    search: Optional[str] = None,
+    file_path: Optional[str] = None,
+    limit: int = 100,
+    principal: AuthenticatedPrincipal = Depends(require_auth),
+    graph_manager: GraphManager = Depends(get_graph_manager),
+) -> GraphVisualizationResponse:
+    """
+    Get graph data for visualization.
+    
+    Fetches nodes and relationships from Neo4j with optional filters.
+    Supports filtering by node type, relationship type, search query, and file path.
+    """
+    if not settings.NEO4J_ENABLED:
+        raise HTTPException(status_code=503, detail="Neo4j is not enabled")
+    
+    logger.info(f"Getting graph visualization: node_type={node_type}, search={search}")
+    
+    try:
+        # Build Cypher query
+        where_clauses = []
+        params = {
+            "org_id": principal.organization_id,
+            "limit": min(limit, 500),  # Cap at 500 nodes
+        }
+        
+        # Node type filter
+        node_label = "n"
+        if node_type and node_type != "all":
+            if node_type == "chunk":
+                node_label = "n:Chunk"
+            elif node_type == "rule":
+                node_label = "n:Rule"
+            elif node_type == "pattern":
+                node_label = "n:Pattern"
+            elif node_type == "kb_document":
+                node_label = "n:KBDocument"
+        
+        # Organization filter
+        where_clauses.append("n.organization_id = $org_id")
+        
+        # Search filter
+        if search:
+            where_clauses.append("(n.content CONTAINS $search OR n.name CONTAINS $search OR n.title CONTAINS $search)")
+            params["search"] = search
+        
+        # File path filter
+        if file_path:
+            where_clauses.append("n.file_path CONTAINS $file_path")
+            params["file_path"] = file_path
+        
+        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+        
+        # Fetch nodes
+        node_query = f"""
+        MATCH ({node_label})
+        WHERE {where_clause}
+        RETURN
+            id(n) as id,
+            labels(n)[0] as type,
+            CASE
+                WHEN n:Chunk THEN coalesce(n.content, '')
+                WHEN n:Rule THEN coalesce(n.name, '')
+                WHEN n:Pattern THEN coalesce(n.pattern_type, '')
+                WHEN n:KBDocument THEN coalesce(n.title, '')
+                ELSE coalesce(n.name, n.title, '')
+            END as label,
+            properties(n) as properties
+        LIMIT $limit
+        """
+        
+        nodes_result = await asyncio.to_thread(
+            graph_manager.neo4j_client.execute_query,
+            node_query,
+            params,
+        )
+        
+        nodes = []
+        node_ids = []
+        for record in nodes_result:
+            node_id = str(record["id"])
+            node_ids.append(node_id)
+            nodes.append({
+                "id": node_id,
+                "label": record["label"][:100] if record["label"] else "Unnamed",
+                "type": record["type"].lower(),
+                "properties": record["properties"],
+            })
+        
+        # Fetch relationships between selected nodes
+        relationships = []
+        if node_ids:
+            rel_type_filter = ""
+            if rel_type and rel_type != "all":
+                rel_type_filter = f"[:{rel_type.upper()}]"
+            
+            rel_query = f"""
+            MATCH (n)-[r{rel_type_filter}]->(m)
+            WHERE id(n) IN $node_ids AND id(m) IN $node_ids
+            RETURN
+                id(r) as id,
+                id(n) as source,
+                id(m) as target,
+                type(r) as type,
+                properties(r) as properties
+            """
+            
+            rel_params = {"node_ids": [int(nid) for nid in node_ids]}
+            
+            rels_result = await asyncio.to_thread(
+                graph_manager.neo4j_client.execute_query,
+                rel_query,
+                rel_params,
+            )
+            
+            for record in rels_result:
+                relationships.append({
+                    "id": str(record["id"]),
+                    "source": str(record["source"]),
+                    "target": str(record["target"]),
+                    "type": record["type"],
+                    "properties": record["properties"],
+                })
+        
+        return GraphVisualizationResponse(
+            nodes=nodes,
+            relationships=relationships,
+        )
+    
+    except Exception as e:
+        logger.error(f"Failed to get graph visualization: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
