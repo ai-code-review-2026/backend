@@ -1,0 +1,23 @@
+import type { PropsWithChildren } from 'react';
+import React from 'react';
+import type { LocalizationKey } from '../localization';
+export type VerificationCodeCardProps = {
+    cardTitle: LocalizationKey;
+    cardSubtitle: LocalizationKey;
+    cardNotice?: LocalizationKey;
+    inputLabel?: LocalizationKey;
+    backLinkLabel?: LocalizationKey;
+    safeIdentifier?: string | undefined | null;
+    resendButton?: LocalizationKey;
+    alternativeMethodsLabel?: LocalizationKey;
+    profileImageUrl?: string;
+    badgeText?: LocalizationKey;
+    onCodeEntryFinishedAction: (code: string, resolve: () => Promise<void>, reject: (err: unknown) => Promise<void>) => void;
+    onResendCodeClicked?: React.MouseEventHandler;
+    showAlternativeMethods?: boolean;
+    onShowAlternativeMethodsClicked?: React.MouseEventHandler;
+    onIdentityPreviewEditClicked?: React.MouseEventHandler;
+    onBackLinkClicked?: React.MouseEventHandler;
+};
+export declare const VerificationCodeCard: (props: PropsWithChildren<VerificationCodeCardProps>) => import("@emotion/react/jsx-runtime").JSX.Element;
+export declare const VerificationCodeContent: (props: PropsWithChildren<VerificationCodeCardProps>) => import("@emotion/react/jsx-runtime").JSX.Element;

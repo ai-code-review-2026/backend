@@ -1,0 +1,5 @@
+<svg viewBox="0 0 100 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shopify bag icon -->
+  <path d="M12 4C10.9 4 10 4.9 10 6V8H6C4.9 8 4 8.9 4 10V22C4 23.1 4.9 24 6 24H18C19.1 24 20 23.1 20 22V10C20 8.9 19.1 8 18 8H14V6C14 4.9 13.1 4 12 4ZM12 6C12.55 6 13 6.45 13 7V8H11V7C11 6.45 11.45 6 12 6Z" fill="currentColor"/>
+  <text x="26" y="19" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="currentColor">shopify</text>
+</svg>

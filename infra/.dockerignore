@@ -1,0 +1,6 @@
+.git
+*.md
+.terraform/
+*.tfstate
+*.log
+.DS_Store

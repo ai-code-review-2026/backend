@@ -1,24 +1,23 @@
 .git
-*.md
+node_modules/
 __pycache__/
 *.pyc
-.venv/
-venv/
 .env
 .env.*
-.pytest_cache/
-.coverage
-*.log
-tests/
+.vscode/
+.idea/
 .DS_Store
+*.log
+tmp/
+temp/
 
-# runtime data (CRITIQUE)
+# runtime data
 qdrant_storage/
 storage/
 data/
 vector_store/
 
-# Poetry cache (IMPORTANT - évite conflits)
+# Poetry cache
 poetry.lock.bak
 .poetry-cache/
 

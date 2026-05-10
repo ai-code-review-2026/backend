@@ -1,0 +1,354 @@
+################################################################################
+# AI Code Review Platform - Caddyfile
+# Reverse Proxy avec SSL automatique (Let's Encrypt)
+#
+# IMPORTANT: Remplacer <votre-domaine.com> par votre vrai domaine
+################################################################################
+
+# Configuration globale
+{
+    # Email pour Let's Encrypt (obligatoire pour SSL)
+    email admin@<votre-domaine.com>
+    
+    # Staging Let's Encrypt (pour tests, désactiver en production)
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+    
+    # Production Let's Encrypt (activer en production)
+    acme_ca https://acme-v02.api.letsencrypt.org/directory
+}
+
+################################################################################
+# APPLICATION PRINCIPALE (Frontend Dashboard)
+################################################################################
+<votre-domaine.com> {
+    # Logs
+    log {
+        output file /var/log/caddy/app.log
+        level INFO
+    }
+
+    # Reverse proxy vers le dashboard Next.js
+    reverse_proxy dashboard:3001 {
+        # Headers de sécurité
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        
+        # Timeouts pour Next.js
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 60s
+        }
+    }
+
+    # Headers de sécurité globaux
+    header {
+        # HSTS (force HTTPS)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # Sécurité XSS
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        
+        # CSP (Content Security Policy)
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.*.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev wss://{host}"
+        
+        # Referrer
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Permissions
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        
+        # Remove server info
+        -Server
+    }
+
+    # Compression
+    encode gzip zstd
+
+    # Limite de taille de requête (100MB pour uploads)
+    request_body {
+        max_size 100MB
+    }
+}
+
+################################################################################
+# API BACKEND
+################################################################################
+api.<votre-domaine.com> {
+    log {
+        output file /var/log/caddy/api.log
+        level INFO
+    }
+
+    # Reverse proxy vers FastAPI backend
+    reverse_proxy backend:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        
+        # Timeouts pour API
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 120s
+            read_timeout 180s
+        }
+        
+        # Health check
+        health_uri /health
+        health_interval 30s
+        health_timeout 10s
+    }
+
+    # Headers de sécurité
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        -Server
+    }
+
+    # CORS headers (géré par FastAPI mais ajouté ici aussi)
+    @options {
+        method OPTIONS
+    }
+    handle @options {
+        header Access-Control-Allow-Origin "*"
+        header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+        header Access-Control-Max-Age "3600"
+        respond 204
+    }
+
+    encode gzip zstd
+    
+    request_body {
+        max_size 100MB
+    }
+}
+
+################################################################################
+# YJS WEBSOCKET (Collaboration temps réel)
+################################################################################
+yjs.<votre-domaine.com> {
+    log {
+        output file /var/log/caddy/yjs.log
+        level INFO
+    }
+
+    # Reverse proxy avec support WebSocket
+    reverse_proxy yjs-server:1234 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        
+        # WebSocket support
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+        
+        transport http {
+            dial_timeout 10s
+            # Pas de timeout pour WebSocket
+            read_timeout 0
+            write_timeout 0
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        -Server
+    }
+}
+
+################################################################################
+# GRAFANA (Monitoring)
+################################################################################
+grafana.<votre-domaine.com> {
+    log {
+        output file /var/log/caddy/grafana.log
+        level INFO
+    }
+
+    # Reverse proxy vers Grafana
+    reverse_proxy grafana:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+
+    encode gzip
+}
+
+################################################################################
+# FLOWER (Celery Monitoring)
+################################################################################
+flower.<votre-domaine.com> {
+    log {
+        output file /var/log/caddy/flower.log
+        level INFO
+    }
+
+    # Authentification basique (recommandé)
+    basicauth {
+        admin $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx73MKJNz1G8a
+    }
+
+    # Reverse proxy vers Flower
+    reverse_proxy flower:5555 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+
+    encode gzip
+}
+
+################################################################################
+# MINIO (Object Storage Admin UI)
+################################################################################
+minio.<votre-domaine.com> {
+    log {
+        output file /var/log/caddy/minio.log
+        level INFO
+    }
+
+    # Reverse proxy vers MinIO Console
+    reverse_proxy minio:9001 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+
+    encode gzip
+}
+
+################################################################################
+# STORAGE (MinIO S3 API - Pour accès public aux fichiers)
+################################################################################
+storage.<votre-domaine.com> {
+    log {
+        output file /var/log/caddy/storage.log
+        level INFO
+    }
+
+    # Reverse proxy vers MinIO S3 API
+    reverse_proxy minio:9000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 120s
+        }
+    }
+
+    # CORS pour accès aux fichiers
+    header {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, Range"
+        Strict-Transport-Security "max-age=31536000"
+        -Server
+    }
+
+    encode gzip
+    
+    request_body {
+        max_size 500MB
+    }
+}
+
+################################################################################
+# PGADMIN (PostgreSQL Admin UI) - OPTIONNEL
+################################################################################
+# pgadmin.<votre-domaine.com> {
+#     log {
+#         output file /var/log/caddy/pgadmin.log
+#         level INFO
+#     }
+# 
+#     # Authentification basique supplémentaire (recommandé)
+#     basicauth {
+#         admin $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx73MKJNz1G8a
+#     }
+# 
+#     reverse_proxy pgadmin:5050 {
+#         header_up Host {host}
+#         header_up X-Real-IP {remote}
+#         header_up X-Forwarded-For {remote}
+#         header_up X-Forwarded-Proto {scheme}
+#     }
+# 
+#     header {
+#         Strict-Transport-Security "max-age=31536000"
+#         X-Frame-Options "SAMEORIGIN"
+#         -Server
+#     }
+# 
+#     encode gzip
+# }
+
+################################################################################
+# NOTES IMPORTANTES
+################################################################################
+
+# 1. Remplacer <votre-domaine.com> partout dans ce fichier
+# 
+# 2. Générer le hash bcrypt pour basicauth:
+#    caddy hash-password --plaintext votre-mot-de-passe
+#    Ou en ligne: https://bcrypt-generator.com/
+#
+# 3. DNS A Records à configurer (pointer vers IP VPS):
+#    - votre-domaine.com
+#    - api.votre-domaine.com
+#    - yjs.votre-domaine.com
+#    - grafana.votre-domaine.com
+#    - flower.votre-domaine.com
+#    - minio.votre-domaine.com
+#    - storage.votre-domaine.com
+#
+# 4. Let's Encrypt rate limits:
+#    - 50 certificats par domaine/semaine
+#    - 5 échecs de validation par compte/hostname/heure
+#    - Tester d'abord avec staging (acme-staging-v02)
+#
+# 5. Ports ouverts sur VPS:
+#    - 80 (HTTP - redirection automatique vers HTTPS)
+#    - 443 (HTTPS)
+#
+# 6. Logs Caddy disponibles dans:
+#    /var/log/caddy/*.log (mappé depuis volume Docker)
+#
+# 7. Certificats SSL automatiques:
+#    Caddy gère tout automatiquement (génération + renouvellement)
+#    Stockés dans: /data/caddy (volume Docker persistant)
+#
+################################################################################

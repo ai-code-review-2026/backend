@@ -1,0 +1,324 @@
+# ============================================================================
+# Dependabot Configuration
+# ============================================================================
+#
+# Automatically creates PRs for dependency updates:
+#   - Python packages (pip) for all microservices
+#   - Docker base images
+#   - GitHub Actions
+#   - npm packages for dashboard
+#
+# ============================================================================
+
+version: 2
+updates:
+  # ==========================================================================
+  # GitHub Actions
+  # ==========================================================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # ==========================================================================
+  # Docker - All Services
+  # ==========================================================================
+  - package-ecosystem: "docker"
+    directory: "/services/api-gateway"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "api-gateway"
+
+  - package-ecosystem: "docker"
+    directory: "/services/auth-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "auth-service"
+
+  - package-ecosystem: "docker"
+    directory: "/services/analysis-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "analysis-service"
+
+  - package-ecosystem: "docker"
+    directory: "/services/project-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "project-service"
+
+  - package-ecosystem: "docker"
+    directory: "/services/review-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "review-service"
+
+  - package-ecosystem: "docker"
+    directory: "/services/integration-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "integration-service"
+
+  - package-ecosystem: "docker"
+    directory: "/services/ai-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "ai-service"
+
+  - package-ecosystem: "docker"
+    directory: "/services/notification-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "notification-service"
+
+  - package-ecosystem: "docker"
+    directory: "/services/security-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security-service"
+
+  # ==========================================================================
+  # Python (pip) - All Services
+  # ==========================================================================
+  - package-ecosystem: "pip"
+    directory: "/services/api-gateway"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(api-gateway)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "api-gateway"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/auth-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(auth-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "auth-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/analysis-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(analysis-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "analysis-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/project-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(project-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "project-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/review-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(review-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "review-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/integration-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(integration-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "integration-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/ai-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(ai-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "ai-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/notification-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(notification-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "notification-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/services/security-service"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(security-service)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "security-service"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ==========================================================================
+  # Backend (Poetry)
+  # ==========================================================================
+  - package-ecosystem: "pip"
+    directory: "/apps/backend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(backend)"
+    labels:
+      - "dependencies"
+      - "python"
+      - "backend"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ==========================================================================
+  # Dashboard (npm)
+  # ==========================================================================
+  - package-ecosystem: "npm"
+    directory: "/apps/dashboard"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(dashboard)"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "dashboard"
+    groups:
+      npm-minor:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Ignore major version bumps for React ecosystem
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]

@@ -1,0 +1,67 @@
+# infra/observability/prometheus.yml
+# Prometheus scrape configuration for local development
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    env: "local"
+    project: "ai-code-review"
+
+# ─── Alerting Rules ───────────────────────────────────────────────────────────
+
+rule_files:
+  - "/etc/prometheus/alerts.yml"
+
+# ─── Scrape Configurations ────────────────────────────────────────────────────
+
+scrape_configs:
+
+  # FastAPI application metrics
+  # Exposed by prometheus-fastapi-instrumentator at GET /metrics
+  - job_name: "fastapi"
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: "api"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+
+  # Celery worker metrics via Flower (task counts, states)
+  - job_name: "celery-flower"
+    static_configs:
+      - targets: ["flower:5555"]
+        labels:
+          service: "worker"
+    metrics_path: "/metrics"
+    scrape_interval: 30s
+
+  # Celery worker custom business metrics via Pushgateway
+  # Workers push pipeline metrics (duration, findings, LLM calls, etc.) here
+  # after each task completion. honor_labels preserves the job/instance set by workers.
+  - job_name: "celery-pushgateway"
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+        labels:
+          service: "worker"
+    scrape_interval: 15s
+
+  # Redis metrics via redis_exporter
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+        labels:
+          service: "redis"
+
+  # PostgreSQL metrics via postgres_exporter
+  - job_name: "postgresql"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          service: "postgresql"
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

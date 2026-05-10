@@ -1,0 +1,83 @@
+<svg viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Outer glow -->
+    <filter id="outerGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="20" result="blur"/>
+      <feFlood flood-color="#ffffff" flood-opacity="0.3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Gradient -->
+    <linearGradient id="hexGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#E8713A" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background subtle glow -->
+  <ellipse cx="200" cy="200" rx="150" ry="150" fill="url(#hexGradient)" opacity="0.05"/>
+  
+  <!-- Outer hexagon (largest) -->
+  <g filter="url(#outerGlow)">
+    <path 
+      d="M200 40L340 120V280L200 360L60 280V120L200 40Z" 
+      stroke="#ffffff" 
+      stroke-width="1.5" 
+      fill="none"
+      opacity="0.8"
+    />
+  </g>
+  
+  <!-- Middle hexagon -->
+  <path 
+    d="M200 80L300 140V260L200 320L100 260V140L200 80Z" 
+    stroke="#ffffff" 
+    stroke-width="1.2" 
+    fill="none"
+    opacity="0.5"
+    filter="url(#glow)"
+  />
+  
+  <!-- Inner hexagon -->
+  <path 
+    d="M200 120L260 160V240L200 280L140 240V160L200 120Z" 
+    stroke="#ffffff" 
+    stroke-width="1" 
+    fill="none"
+    opacity="0.35"
+  />
+  
+  <!-- Core hexagon -->
+  <path 
+    d="M200 150L230 170V210L200 230L170 210V170L200 150Z" 
+    stroke="#ffffff" 
+    stroke-width="0.75" 
+    fill="none"
+    opacity="0.2"
+  />
+  
+  <!-- Accent lines connecting vertices -->
+  <g stroke="#E8713A" stroke-width="0.5" opacity="0.4">
+    <line x1="200" y1="40" x2="200" y2="150"/>
+    <line x1="340" y1="120" x2="230" y2="170"/>
+    <line x1="340" y1="280" x2="230" y2="210"/>
+    <line x1="200" y1="360" x2="200" y2="230"/>
+    <line x1="60" y1="280" x2="170" y2="210"/>
+    <line x1="60" y1="120" x2="170" y2="170"/>
+  </g>
+  
+  <!-- Center dot -->
+  <circle cx="200" cy="190" r="3" fill="#E8713A" opacity="0.8"/>
+</svg>

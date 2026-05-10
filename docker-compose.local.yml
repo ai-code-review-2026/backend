@@ -1,0 +1,560 @@
+################################################################################
+# AI Code Review Platform - Local Development Environment
+# 
+# Stack de développement optimisé avec:
+# - Hot reload pour le développement
+# - Ports exposés pour debug
+# - Outils de monitoring et administration
+# - Volumes montés pour le code source
+# - Configuration simplifiée
+#
+# Services inclus:
+#   ✓ PostgreSQL 16      - Base de données
+#   ✓ Redis 7            - Cache et broker
+#   ✓ Neo4j 5            - GraphRAG
+#   ✓ MinIO              - Stockage objet
+#   ✓ FastAPI Backend    - API (avec hot reload)
+#   ✓ Celery Worker      - Workers d'analyse
+#   ✓ Dashboard Next.js  - Frontend (dev mode)
+#   ✓ Adminer            - UI PostgreSQL
+#   ✓ Flower             - UI Celery
+#   ✓ Prometheus         - Métriques (optionnel)
+#   ✓ Grafana            - Dashboards (optionnel)
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d
+#   docker compose -f docker-compose.local.yml logs -f backend
+#
+################################################################################
+
+version: "3.9"
+
+################################################################################
+# NETWORKS
+################################################################################
+networks:
+  ai-review-dev:
+    driver: bridge
+    name: ai-review-development
+
+################################################################################
+# VOLUMES
+################################################################################
+volumes:
+  postgres_data_dev:
+    driver: local
+  redis_data_dev:
+    driver: local
+  neo4j_data_dev:
+    driver: local
+  neo4j_logs_dev:
+    driver: local
+  minio_data_dev:
+    driver: local
+  prometheus_data_dev:
+    driver: local
+  grafana_data_dev:
+    driver: local
+  langfuse_db_data:
+    driver: local
+
+################################################################################
+# SERVICES
+################################################################################
+services:
+
+  # ============================================================================
+  # INFRASTRUCTURE
+  # ============================================================================
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-review-dev-postgres
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_code_review_dev
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ai-review-dev-redis
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ─── Neo4j ──────────────────────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5.28-community
+    container_name: ai-review-dev-neo4j
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "7474:7474"  # Browser UI
+      - "7687:7687"  # Bolt
+    environment:
+      NEO4J_AUTH: neo4j/devpassword
+      NEO4J_server_memory_heap_initial__size: 256M
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512M
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*,gds.*
+      NEO4J_dbms_security_procedures_allowlist: apoc.*,gds.*
+      NEO4J_PLUGINS: '["apoc","graph-data-science"]'
+    volumes:
+      - neo4j_data_dev:/data
+      - neo4j_logs_dev:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ─── MinIO ──────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2024-03-21T23-13-43Z
+    container_name: ai-review-dev-minio
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data_dev:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ============================================================================
+  # APPLICATION
+  # ============================================================================
+
+  # ─── Backend API ────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    image: ai-review-backend:dev
+    container_name: ai-review-dev-backend
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "8000:8000"
+    environment:
+      ENV: development
+      LOG_LEVEL: debug
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/ai_code_review_dev
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: devpassword
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+      MINIO_BUCKET: ai-review-dev
+      # Désactiver certaines features en dev si nécessaire
+      CLERK_AUTH_ENABLED: "false"
+      RBAC_ENFORCEMENT_ENABLED: "false"
+      EMAIL_ENABLED: "false"
+      SLACK_ENABLED: "false"
+      # LLM Gateway Configuration
+      OLLAMA_ENABLED: "true"
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Observability (disabled by default, enable with --profile llm-observability)
+      LANGFUSE_ENABLED: "false"
+      OTEL_ENABLED: "false"
+    volumes:
+      - ./apps/backend:/app:ro  # Code source en read-only
+      - ./imported_repo:/app/imported_repo  # Workspace pour les analyses
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ─── Celery Worker ──────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    image: ai-review-backend:dev
+    container_name: ai-review-dev-worker
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    command: >
+      celery -A app.workers.celery_app.celery_app worker
+      --loglevel=debug
+      -Q analyses
+      --concurrency=2
+      --pool=prefork
+    environment:
+      ENV: development
+      LOG_LEVEL: debug
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/ai_code_review_dev
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: devpassword
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+      CELERY_WORKER_POOL: prefork
+      PROMETHEUS_PUSHGATEWAY_URL: http://pushgateway:9091
+    volumes:
+      - ./apps/backend:/app:ro
+      - ./imported_repo:/app/imported_repo
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ─── Dashboard (Dev Mode) ───────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile.dev
+      target: development
+    image: ai-review-dashboard:dev
+    container_name: ai-review-dev-dashboard
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      BACKEND_API_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
+      NEXT_PUBLIC_Y_WEBSOCKET_URL: ws://localhost:1234
+      # Clerk désactivé en dev local
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ""
+      CLERK_SECRET_KEY: ""
+    volumes:
+      - ./apps/dashboard:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ============================================================================
+  # MONITORING & ADMIN TOOLS
+  # ============================================================================
+
+  # ─── Adminer (PostgreSQL UI) ────────────────────────────────────────────────
+  adminer:
+    image: adminer:4.8.1
+    container_name: ai-review-dev-adminer
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─── Flower (Celery UI) ─────────────────────────────────────────────────────
+  flower:
+    image: mher/flower:2.0
+    container_name: ai-review-dev-flower
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "5555:5555"
+    command: >
+      celery --broker=redis://redis:6379/0 flower --port=5555
+    depends_on:
+      - redis
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─── Prometheus Pushgateway ─────────────────────────────────────────────────
+  pushgateway:
+    image: prom/pushgateway:v1.8.0
+    container_name: ai-review-dev-pushgateway
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "9091:9091"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─── Prometheus (optionnel) ─────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: ai-review-dev-prometheus
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data_dev:/prometheus
+    depends_on:
+      - backend
+      - pushgateway
+    profiles:
+      - monitoring
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─── Grafana (optionnel) ────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: ai-review-dev-grafana
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "3030:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data_dev:/var/lib/grafana
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ─── Langfuse (LLMOps Platform - optionnel) ─────────────────────────────────
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: ai-review-dev-langfuse-db
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - llm-observability
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  langfuse:
+    image: langfuse/langfuse:2.68.0
+    container_name: ai-review-dev-langfuse
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "3100:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3100
+      NEXTAUTH_SECRET: changeme-langfuse-secret-key-must-be-at-least-32-chars
+      SALT: changeme-salt-must-be-at-least-32-chars-long
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    profiles:
+      - llm-observability
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ─── Jaeger (OpenTelemetry Distributed Tracing - optionnel) ────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: ai-review-dev-jaeger
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC receiver
+      - "4318:4318"    # OTLP HTTP receiver
+      - "14268:14268"  # Jaeger Collector HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+    profiles:
+      - llm-observability
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+################################################################################
+# NOTES D'UTILISATION
+################################################################################
+#
+# 1. Démarrage sans monitoring:
+#    docker compose -f docker-compose.local.yml up -d
+#
+# 2. Démarrage avec monitoring:
+#    docker compose -f docker-compose.local.yml --profile monitoring up -d
+#
+# 3. Démarrage avec LLM observability (Langfuse + Jaeger):
+#    docker compose -f docker-compose.local.yml --profile llm-observability up -d
+#
+# 4. Démarrage complet (tous les profils):
+#    docker compose -f docker-compose.local.yml --profile monitoring --profile llm-observability up -d
+#
+# 5. Voir les logs:
+#    docker compose -f docker-compose.local.yml logs -f backend
+#    docker compose -f docker-compose.local.yml logs -f worker
+#
+# 6. Rebuild après changement de code:
+#    docker compose -f docker-compose.local.yml up -d --build backend
+#
+# 7. Exécuter les migrations:
+#    docker compose -f docker-compose.local.yml exec backend alembic upgrade head
+#
+# 8. Shell dans un container:
+#    docker compose -f docker-compose.local.yml exec backend bash
+#
+# 9. Accès aux services:
+#    - API:          http://localhost:8000
+#    - API Docs:     http://localhost:8000/docs
+#    - Dashboard:    http://localhost:3000
+#    - PostgreSQL:   localhost:5432 (postgres/postgres)
+#    - Redis:        localhost:6379
+#    - Neo4j UI:     http://localhost:7474 (neo4j/devpassword)
+#    - MinIO API:    http://localhost:9000
+#    - MinIO UI:     http://localhost:9001 (minioadmin/minioadmin)
+#    - Adminer:      http://localhost:8080
+#    - Flower:       http://localhost:5555
+#    - Prometheus:   http://localhost:9090 (avec --profile monitoring)
+#    - Grafana:      http://localhost:3030 (avec --profile monitoring)
+#    - Langfuse:     http://localhost:3100 (avec --profile llm-observability)
+#    - Jaeger:       http://localhost:16686 (avec --profile llm-observability)
+#
+# 10. Reset complet:
+#    docker compose -f docker-compose.local.yml down -v
+#
+################################################################################

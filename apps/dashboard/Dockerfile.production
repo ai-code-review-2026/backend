@@ -1,0 +1,186 @@
+# ==========================================
+# AI Code Review Platform - Dashboard Dockerfile
+# ==========================================
+# Multi-stage production-ready Next.js 16 build
+# - Security: non-root user, minimal base image
+# - Performance: layer caching, dependency pruning
+# - Size: ~500MB (vs 1.5GB+ with dev dependencies)
+# - Targets: runtime (default), development
+# ==========================================
+
+# ==========================================
+# Stage 1: Base - Common dependencies
+# ==========================================
+FROM node:20-bookworm-slim AS base
+
+WORKDIR /app
+
+# Disable telemetry
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NPM_CONFIG_FUND=false
+
+# Install security updates only (no build tools)
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        dumb-init \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# ==========================================
+# Stage 2: Dependencies - Install packages
+# ==========================================
+FROM base AS deps
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+
+# Install ALL dependencies (dev + prod)
+# - Use npm ci for reproducible builds (locked versions)
+# - Retry logic for network stability
+RUN npm config set fetch-retries 10 \
+    && npm config set fetch-retry-mintimeout 100000 \
+    && npm config set fetch-retry-maxtimeout 600000 \
+    && npm ci --legacy-peer-deps || npm ci --legacy-peer-deps
+
+# ==========================================
+# Stage 3: Builder - Build Next.js app
+# ==========================================
+FROM base AS builder
+
+WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source code (respects .dockerignore)
+COPY . .
+
+# Build arguments for NEXT_PUBLIC_* environment variables
+# These are baked into the build at compile time
+ARG NEXT_PUBLIC_API_URL="http://localhost:3001"
+ARG NEXT_PUBLIC_APP_URL="http://localhost:3001"
+ARG NEXT_PUBLIC_BACKEND_URL="http://localhost:8000"
+ARG NEXT_PUBLIC_Y_WEBSOCKET_URL="ws://localhost:1234"
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=""
+ARG NEXT_PUBLIC_CLERK_JS_URL=""
+ARG NEXT_PUBLIC_CLERK_JS_VERSION=""
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL="/sign-in"
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up"
+ARG NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL="/auth/role-redirect"
+ARG NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL="/auth/role-redirect"
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_FORCE_REDIRECT_URL=""
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=""
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL=""
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=""
+
+# Export build-time env vars (baked into .next build output)
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+ENV NEXT_PUBLIC_Y_WEBSOCKET_URL=${NEXT_PUBLIC_Y_WEBSOCKET_URL}
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+ENV NEXT_PUBLIC_CLERK_JS_URL=${NEXT_PUBLIC_CLERK_JS_URL}
+ENV NEXT_PUBLIC_CLERK_JS_VERSION=${NEXT_PUBLIC_CLERK_JS_VERSION}
+ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=${NEXT_PUBLIC_CLERK_SIGN_IN_URL}
+ENV NEXT_PUBLIC_CLERK_SIGN_UP_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
+ENV NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL}
+ENV NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL}
+ENV NEXT_PUBLIC_CLERK_SIGN_IN_FORCE_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_IN_FORCE_REDIRECT_URL}
+ENV NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL}
+ENV NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL}
+ENV NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL}
+
+# Build Next.js app
+# - Runs npm run sync:clerk-assets (prebuild hook)
+# - Cleans .next cache
+# - Creates optimized production build in .next/
+RUN npm run build
+
+# Prune dev dependencies (reduces final image size by 60%+)
+RUN npm prune --omit=dev --legacy-peer-deps
+
+# ==========================================
+# Stage 4: Runtime - Production server
+# ==========================================
+FROM base AS runtime
+
+WORKDIR /app
+
+# Runtime environment variables
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3001
+ENV HOSTNAME="0.0.0.0"
+
+# Create non-root user for security
+RUN groupadd -r nextjs -g 1001 \
+    && useradd -r -g nextjs -u 1001 -m -d /home/nextjs nextjs
+
+# Copy minimal runtime artifacts from builder
+# - package.json + lock for npm start
+# - next.config.js for runtime config
+# - .next/ build output (server chunks, static assets)
+# - public/ static files
+# - scripts/ for prestart hooks (sync-clerk-assets)
+# - node_modules/ (production only, dev deps pruned)
+COPY --from=builder --chown=nextjs:nextjs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nextjs /app/package-lock.json ./package-lock.json
+COPY --from=builder --chown=nextjs:nextjs /app/next.config.js ./next.config.js
+COPY --from=builder --chown=nextjs:nextjs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nextjs /app/public ./public
+COPY --from=builder --chown=nextjs:nextjs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nextjs /app/node_modules ./node_modules
+
+# Create cache directories with correct permissions
+RUN mkdir -p /app/.next/cache \
+    && chown -R nextjs:nextjs /app/.next/cache
+
+# Switch to non-root user
+USER nextjs
+
+# Expose port 3001
+EXPOSE 3001
+
+# Health check (Next.js serves on :3001)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3001/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+
+# Start production server with dumb-init (proper signal handling)
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["npm", "run", "start"]
+
+# ==========================================
+# Stage 5: Development - Hot reload server
+# ==========================================
+FROM base AS development
+
+WORKDIR /app
+
+# Development environment
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3001
+
+# Install development dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps
+
+# Copy source (will be mounted as volume in docker-compose)
+COPY . .
+
+# Create non-root user
+RUN groupadd -r nextjs -g 1001 \
+    && useradd -r -g nextjs -u 1001 -m -d /home/nextjs nextjs \
+    && chown -R nextjs:nextjs /app
+
+USER nextjs
+
+EXPOSE 3001
+
+# Start development server with hot reload
+CMD ["npm", "run", "dev"]

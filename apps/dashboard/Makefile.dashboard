@@ -1,0 +1,227 @@
+# ==========================================
+# AI Code Review Platform - Dashboard Makefile
+# ==========================================
+# Simplifies Docker operations for Next.js dashboard
+# 
+# Quick start:
+#   make build      - Build production image
+#   make up         - Start production stack
+#   make dev        - Start development with hot reload
+#   make logs       - View dashboard logs
+#   make shell      - Shell into running container
+# ==========================================
+
+.PHONY: help
+help: ## Show this help message
+	@echo "AI Code Review Platform - Dashboard Commands"
+	@echo ""
+	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+# ==========================================
+# Build Commands
+# ==========================================
+
+.PHONY: build
+build: ## Build production dashboard image
+	docker-compose -f docker-compose.dashboard.yml build dashboard
+
+.PHONY: build-dev
+build-dev: ## Build development dashboard image
+	docker-compose -f docker-compose.dashboard.yml build dashboard-dev
+
+.PHONY: build-all
+build-all: ## Build all images (dashboard + y-websocket)
+	docker-compose -f docker-compose.dashboard.yml build
+
+.PHONY: build-no-cache
+build-no-cache: ## Build production image without cache
+	docker-compose -f docker-compose.dashboard.yml build --no-cache dashboard
+
+# ==========================================
+# Run Commands
+# ==========================================
+
+.PHONY: up
+up: ## Start production dashboard stack
+	docker-compose -f docker-compose.dashboard.yml up -d dashboard
+
+.PHONY: dev
+dev: ## Start development dashboard with hot reload
+	docker-compose -f docker-compose.dashboard.yml --profile development up dashboard-dev
+
+.PHONY: up-all
+up-all: ## Start all services (dashboard + y-websocket + backend)
+	docker-compose -f docker-compose.dashboard.yml up -d
+
+.PHONY: down
+down: ## Stop and remove all containers
+	docker-compose -f docker-compose.dashboard.yml down
+
+.PHONY: restart
+restart: ## Restart dashboard container
+	docker-compose -f docker-compose.dashboard.yml restart dashboard
+
+.PHONY: stop
+stop: ## Stop dashboard container
+	docker-compose -f docker-compose.dashboard.yml stop dashboard
+
+# ==========================================
+# Logs & Debugging
+# ==========================================
+
+.PHONY: logs
+logs: ## View dashboard logs (follow mode)
+	docker-compose -f docker-compose.dashboard.yml logs -f dashboard
+
+.PHONY: logs-all
+logs-all: ## View all service logs
+	docker-compose -f docker-compose.dashboard.yml logs -f
+
+.PHONY: logs-y-websocket
+logs-y-websocket: ## View Y.js WebSocket logs
+	docker-compose -f docker-compose.dashboard.yml logs -f y-websocket
+
+.PHONY: shell
+shell: ## Open shell in running dashboard container
+	docker-compose -f docker-compose.dashboard.yml exec dashboard sh
+
+.PHONY: shell-root
+shell-root: ## Open root shell in dashboard container
+	docker-compose -f docker-compose.dashboard.yml exec -u root dashboard sh
+
+.PHONY: ps
+ps: ## Show running containers
+	docker-compose -f docker-compose.dashboard.yml ps
+
+# ==========================================
+# Maintenance Commands
+# ==========================================
+
+.PHONY: clean
+clean: ## Remove containers and volumes
+	docker-compose -f docker-compose.dashboard.yml down -v
+
+.PHONY: clean-images
+clean-images: ## Remove dashboard Docker images
+	docker rmi -f ahmedaminbejaoui/ai-review-dashboard:latest || true
+	docker rmi -f ahmedaminbejaoui/ai-review-dashboard:dev || true
+	docker rmi -f ahmedaminbejaoui/ai-review-y-websocket:latest || true
+
+.PHONY: prune
+prune: ## Remove all unused Docker resources
+	docker system prune -af --volumes
+
+# ==========================================
+# Health & Status Commands
+# ==========================================
+
+.PHONY: health
+health: ## Check dashboard health status
+	@echo "Dashboard Health Check:"
+	@curl -f http://localhost:3001/api/health || echo "Dashboard is not healthy"
+
+.PHONY: status
+status: ## Show dashboard container status
+	@docker-compose -f docker-compose.dashboard.yml ps dashboard
+	@echo ""
+	@echo "Dashboard URL: http://localhost:3001"
+
+# ==========================================
+# Docker Hub Commands
+# ==========================================
+
+.PHONY: push
+push: ## Push dashboard image to Docker Hub
+	docker push ahmedaminbejaoui/ai-review-dashboard:latest
+
+.PHONY: pull
+pull: ## Pull dashboard image from Docker Hub
+	docker pull ahmedaminbejaoui/ai-review-dashboard:latest
+
+.PHONY: tag
+tag: ## Tag image with version (usage: make tag VERSION=1.0.0)
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make tag VERSION=1.0.0"; exit 1; fi
+	docker tag ahmedaminbejaoui/ai-review-dashboard:latest ahmedaminbejaoui/ai-review-dashboard:$(VERSION)
+	docker push ahmedaminbejaoui/ai-review-dashboard:$(VERSION)
+
+# ==========================================
+# Development Utilities
+# ==========================================
+
+.PHONY: env-check
+env-check: ## Validate .env.docker file
+	@echo "Checking .env.docker configuration..."
+	@test -f .env.docker || (echo "Error: .env.docker not found. Copy from .env.docker.example" && exit 1)
+	@grep -q "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_" .env.docker || echo "Warning: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY not set"
+	@grep -q "CLERK_SECRET_KEY=sk_" .env.docker || echo "Warning: CLERK_SECRET_KEY not set"
+	@echo "✓ .env.docker exists"
+
+.PHONY: install-local
+install-local: ## Install dependencies locally (for IDE)
+	npm ci
+
+.PHONY: build-local
+build-local: ## Build Next.js locally (for testing)
+	npm run build
+
+.PHONY: lint
+lint: ## Run ESLint locally
+	npm run lint
+
+# ==========================================
+# Integration Testing
+# ==========================================
+
+.PHONY: test-build
+test-build: ## Test build process end-to-end
+	@echo "Testing dashboard build..."
+	docker-compose -f docker-compose.dashboard.yml build dashboard
+	docker-compose -f docker-compose.dashboard.yml up -d dashboard
+	@sleep 10
+	@echo "Checking dashboard health..."
+	curl -f http://localhost:3001/api/health || (docker-compose -f docker-compose.dashboard.yml logs dashboard && exit 1)
+	@echo "✓ Build test passed"
+	docker-compose -f docker-compose.dashboard.yml down
+
+.PHONY: test-dev
+test-dev: ## Test development setup
+	@echo "Testing development setup..."
+	docker-compose -f docker-compose.dashboard.yml --profile development up -d dashboard-dev
+	@sleep 15
+	@echo "Checking dashboard health..."
+	curl -f http://localhost:3001/api/health || (docker-compose -f docker-compose.dashboard.yml logs dashboard-dev && exit 1)
+	@echo "✓ Development test passed"
+	docker-compose -f docker-compose.dashboard.yml down
+
+# ==========================================
+# Size & Performance Analysis
+# ==========================================
+
+.PHONY: image-size
+image-size: ## Show dashboard image size
+	@echo "Dashboard image sizes:"
+	@docker images ahmedaminbejaoui/ai-review-dashboard --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+.PHONY: inspect
+inspect: ## Inspect dashboard image layers
+	docker history ahmedaminbejaoui/ai-review-dashboard:latest --human
+
+# ==========================================
+# Quick Commands
+# ==========================================
+
+.PHONY: quick-start
+quick-start: env-check build up status ## Quick start (build + run + check)
+	@echo ""
+	@echo "✓ Dashboard is running!"
+	@echo "  Access at: http://localhost:3001"
+	@echo "  Logs: make logs"
+
+.PHONY: rebuild
+rebuild: down build up ## Rebuild and restart dashboard
+
+.PHONY: fresh
+fresh: clean build up ## Fresh start (remove volumes + rebuild)
+
+# Default target
+.DEFAULT_GOAL := help

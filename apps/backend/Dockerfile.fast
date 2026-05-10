@@ -1,0 +1,81 @@
+# ==========================================
+# ULTRA-FAST BACKEND DOCKERFILE (pip-based)
+# ==========================================
+# Build time: 5-8 minutes (vs 50+ with Poetry)
+# Strategy: Use pip + requirements.txt instead of Poetry
+# Generate: poetry export -f requirements.txt -o requirements.txt --without-hashes --only main
+# ==========================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_DEFAULT_TIMEOUT=1000
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_RETRIES=10
+# Force CPU-only (no CUDA)
+ENV CUDA_VISIBLE_DEVICES=""
+ENV TORCH_CUDA_ARCH_LIST=""
+ENV FORCE_CUDA=0
+
+# Install system dependencies in one layer
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        nodejs \
+        npm \
+        ruby \
+        ruby-dev \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js static analysis tools
+RUN npm install -g \
+        eslint@^8 \
+        @eslint/js \
+        stylelint \
+        stylelint-config-standard \
+    && npm cache clean --force
+
+# Ruby static analysis
+RUN gem install rubocop --no-document
+
+# Go staticcheck
+RUN curl -sSfL \
+        https://github.com/dominikh/go-tools/releases/latest/download/staticcheck_linux_amd64.tar.gz \
+    | tar -xzf - -C /usr/local/bin --strip-components=1 staticcheck/staticcheck \
+    && chmod +x /usr/local/bin/staticcheck
+
+# Ensure Python console scripts are in PATH
+ENV PATH="/usr/local/bin:${PATH}"
+
+# Configure pip for better network reliability
+RUN pip config set global.timeout 1000 && \
+    pip config set global.retries 10
+
+# Install torch CPU-only FIRST (forces sentence-transformers to use CPU version)
+RUN pip install --no-cache-dir \
+    torch==2.5.1+cpu \
+    torchvision==0.20.1+cpu \
+    torchaudio==2.5.1+cpu \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --default-timeout=1000 \
+    --retries 10
+
+# Copy requirements.txt (generated from Poetry)
+COPY requirements.txt /app/
+
+# Install Python dependencies via pip (MUCH faster than Poetry)
+# torch/torchvision/torchaudio already installed, will be skipped
+RUN pip install --no-cache-dir -r requirements.txt --default-timeout=1000 --retries 10 || \
+    pip install --no-cache-dir -r requirements.txt --default-timeout=1000 --retries 10
+
+# Copy application code
+COPY . /app
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,82 @@
+{
+  "__inputs": [
+    { "name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus" }
+  ],
+  "annotations": { "list": [] },
+  "editable": true,
+  "id": null,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        { "expr": "redis_connected_clients{job=\"redis\"}", "legendFormat": "Connected Clients", "refId": "A" }
+      ],
+      "title": "Connected Clients",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        { "expr": "rate(redis_commands_processed_total{job=\"redis\"}[1m])", "legendFormat": "Commands/s", "refId": "A" }
+      ],
+      "title": "Commands Processed / sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "redis_memory_used_bytes{job=\"redis\"}", "legendFormat": "Used Memory", "refId": "A" },
+        { "expr": "redis_memory_max_bytes{job=\"redis\"}", "legendFormat": "Max Memory", "refId": "B" }
+      ],
+      "title": "Memory Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "targets": [
+        { "expr": "redis_db_keys{job=\"redis\"}", "legendFormat": "Keys ({{db}})", "refId": "A" }
+      ],
+      "title": "Key Count per DB",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "targets": [
+        { "expr": "rate(redis_keyspace_hits_total{job=\"redis\"}[1m])", "legendFormat": "Hits/s", "refId": "A" },
+        { "expr": "rate(redis_keyspace_misses_total{job=\"redis\"}[1m])", "legendFormat": "Misses/s", "refId": "B" }
+      ],
+      "title": "Keyspace Hits vs Misses",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "expr": "redis_uptime_in_seconds{job=\"redis\"}", "legendFormat": "Uptime (s)", "refId": "A" }
+      ],
+      "title": "Redis Uptime",
+      "type": "stat"
+    }
+  ],
+  "schemaVersion": 38,
+  "tags": ["redis"],
+  "templating": {
+    "list": [{ "name": "DS_PROMETHEUS", "type": "datasource", "query": "prometheus" }]
+  },
+  "title": "Redis - AI Code Review",
+  "uid": "redis-ai-review",
+  "version": 1
+}

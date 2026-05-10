@@ -1,0 +1,7 @@
+# tmp/ directory
+# This directory contains runtime artifacts and generated files
+# Everything in this directory is gitignored
+
+*
+!.gitignore
+!README.md

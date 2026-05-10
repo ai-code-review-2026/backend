@@ -1,0 +1,133 @@
+# ==========================================
+# Docker ignore patterns for Next.js Dashboard
+# ==========================================
+# Excludes files from Docker build context
+# - Speeds up docker build by reducing context size
+# - Prevents sensitive data from being copied into image
+# ==========================================
+
+# ==========================================
+# Version Control
+# ==========================================
+.git/
+.gitignore
+.gitattributes
+*.md
+!README.md
+ATTRIBUTIONS.md
+MOBILE_*.md
+
+# ==========================================
+# Dependencies (installed via npm ci in Dockerfile)
+# ==========================================
+node_modules/
+.pnp
+.pnp.js
+
+# ==========================================
+# Next.js Build Artifacts
+# ==========================================
+.next/
+out/
+build/
+dist/
+.turbo/
+.vercel/
+
+# ==========================================
+# Environment & Secrets (CRITICAL - never include in image)
+# ==========================================
+.env
+.env.*
+!.env.example
+*.env
+*.env.local
+*.env.development
+*.env.production
+*.env.test
+
+# ==========================================
+# Logs & Debug Files
+# ==========================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+dashboard.log
+build-output.log
+mobile-build.log
+
+# ==========================================
+# Testing & Coverage
+# ==========================================
+coverage/
+.nyc_output/
+cypress/videos/
+cypress/screenshots/
+test-results/
+playwright-report/
+test-home-page.html
+test.txt
+
+# ==========================================
+# IDE & Editor Files
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# Mobile Build Artifacts (Capacitor)
+# ==========================================
+ios/
+android/
+capacitor.config.ts
+next.config.mobile.js
+
+# ==========================================
+# Temporary & Cache Files
+# ==========================================
+*.tmp
+*.temp
+.cache/
+.eslintcache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# ==========================================
+# Documentation & Examples
+# ==========================================
+docs/
+examples/
+*.zip
+components.zip
+
+# ==========================================
+# Docker & CI/CD
+# ==========================================
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# ==========================================
+# Runtime Data (generated at runtime, not build time)
+# ==========================================
+data/
+storage/
+uploads/
+public/uploads/
+
+# ==========================================
+# Package Manager Lock Files (except npm - we need package-lock.json)
+# ==========================================
+yarn.lock
+pnpm-lock.yaml
+bun.lockb

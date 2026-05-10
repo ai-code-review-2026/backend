@@ -1,0 +1,18 @@
+name: frontend-app-stack
+
+services:
+  frontend-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://135.125.100.150:3001
+    container_name: frontend-app
+    ports:
+      - "3000:3001"
+    networks:
+      - frontend-app-network
+
+networks:
+  frontend-app-network:
+    driver: bridge

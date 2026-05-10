@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1.7
+
+# ==========================================
+# BASE ML IMAGE (build once, reuse often)
+# ==========================================
+# Contains CPU-only torch + sentence-transformers ecosystem.
+# Build once:
+#   docker build -f Dockerfile.ml-base -t ai-review-ml-base:latest .
+# Then build the backend image:
+#   docker build -t ai-code-review-backend:latest .
+# ==========================================
+
+FROM python:3.11-slim AS ml-builder
+
+ENV PIP_DEFAULT_TIMEOUT=1000 \
+    PIP_RETRIES=10 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    CUDA_VISIBLE_DEVICES="" \
+    TORCH_CUDA_ARCH_LIST="" \
+    FORCE_CUDA=0
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates
+
+# Install ML dependencies into an isolated prefix first. The final stage copies
+# only installed packages, not build-essential or apt metadata.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/opt/ml-deps \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        torch==2.5.1+cpu \
+        torchvision==0.20.1+cpu \
+        torchaudio==2.5.1+cpu \
+        sentence-transformers==3.0.1 \
+        transformers==4.44.2 \
+    && find /opt/ml-deps -type d -name "__pycache__" -prune -exec rm -rf {} + \
+    && find /opt/ml-deps -type f -name "*.pyc" -delete
+
+
+FROM python:3.11-slim AS ml-base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DEFAULT_TIMEOUT=1000 \
+    PIP_RETRIES=10 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    CUDA_VISIBLE_DEVICES="" \
+    TORCH_CUDA_ARCH_LIST="" \
+    FORCE_CUDA=0
+
+COPY --from=ml-builder /opt/ml-deps/ /usr/local/
+
+WORKDIR /app

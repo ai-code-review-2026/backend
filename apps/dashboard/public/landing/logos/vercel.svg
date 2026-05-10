@@ -1,0 +1,5 @@
+<svg viewBox="0 0 100 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Vercel triangle -->
+  <path d="M12 6L24 26H0L12 6Z" fill="currentColor"/>
+  <text x="32" y="24" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="500" fill="currentColor">Vercel</text>
+</svg>

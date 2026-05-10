@@ -1,0 +1,139 @@
+################################################################################
+# .dockerignore for Backend
+# Excludes files that should NOT be copied into the Docker image
+################################################################################
+
+# ─── Version Control ──────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ─── Environment & Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+*.pfx
+credentials.json
+secrets/
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+backend.codex.err.log
+backend.codex.out.log
+backend.log
+
+# ─── Testing ──────────────────────────────────────────────────────────────────
+tests/
+test_*/
+*_test.py
+test*.py
+.pytest_cache/
+
+# ─── Documentation ────────────────────────────────────────────────────────────
+*.md
+!README.md
+docs/
+*.rst
+*.txt
+
+# ─── IDE & Editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.opencoderc.json
+
+# ─── Runtime Data & Cache ─────────────────────────────────────────────────────
+qdrant_storage/
+vector_store/
+storage/
+data/
+tmp/
+temp/
+analysis/
+imported_repo/
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── Build Artifacts ──────────────────────────────────────────────────────────
+*.lock
+!poetry.lock
+Makefile
+docker-compose*.yml
+Dockerfile
+Dockerfile.*
+!Dockerfile.complete
+
+# ─── Scripts (not needed in container) ────────────────────────────────────────
+scripts/
+*.sh
+*.bat
+*.ps1
+check_setup.bat
+run_uvicorn.ps1
+
+# ─── Alembic (migrations run separately) ──────────────────────────────────────
+# Keep alembic/ directory but exclude generated data
+alembic/versions/__pycache__/
+
+# ─── CI/CD ────────────────────────────────────────────────────────────────────
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+azure-pipelines.yml
+
+# ─── Other ────────────────────────────────────────────────────────────────────
+*.bak
+*.swp
+*.tmp
+.archive/
+archive/

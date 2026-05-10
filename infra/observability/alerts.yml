@@ -1,0 +1,159 @@
+# infra/observability/alerts.yml
+# Prometheus alerting rules for the AI Code Review platform.
+# Loaded by Prometheus via rule_files in prometheus.yml.
+
+groups:
+
+  # ── Analysis pipeline ────────────────────────────────────────────────────────
+  - name: analysis_pipeline
+    rules:
+
+      # More than 20% of analyses fail over a 10-minute window.
+      - alert: HighAnalysisFailureRate
+        expr: |
+          (
+            rate(analysis_pipeline_completed_total{status="failed"}[10m])
+            /
+            rate(analysis_pipeline_completed_total[10m])
+          ) > 0.2
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Analysis failure rate > 20%"
+          description: >
+            {{ printf "%.0f" (mul (query "rate(analysis_pipeline_completed_total{status='failed'}[10m]) / rate(analysis_pipeline_completed_total[10m])") 100) }}%
+            of analyses are failing. Check worker logs.
+
+      # No analysis has completed (in either direction) for 30 minutes while
+      # analyses were started — pipeline may be hung.
+      - alert: AnalysisPipelineStalled
+        expr: |
+          rate(analysis_pipeline_started_total[30m]) > 0
+          and
+          rate(analysis_pipeline_completed_total[30m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Analysis pipeline appears stalled"
+          description: >
+            Analyses are being started but none are completing. The Celery
+            worker may be stuck or disconnected from Redis.
+
+      # P95 end-to-end analysis duration exceeds 5 minutes.
+      - alert: SlowAnalysisPipeline
+        expr: |
+          histogram_quantile(0.95,
+            rate(analysis_pipeline_duration_seconds_bucket[15m])
+          ) > 300
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Analysis P95 duration > 5 min"
+          description: "95th percentile analysis duration is above 5 minutes."
+
+  # ── LLM / Ollama ─────────────────────────────────────────────────────────────
+  - name: llm
+    rules:
+
+      # More than 10% of LLM calls are timing out over 5 minutes.
+      - alert: LLMHighTimeoutRate
+        expr: |
+          (
+            rate(llm_requests_total{status="timeout"}[5m])
+            /
+            rate(llm_requests_total[5m])
+          ) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Ollama timeout rate > 10%"
+          description: >
+            LLM ({{ $labels.model }}) is timing out on more than 10% of
+            requests. Consider increasing OLLAMA_TIMEOUT_SECONDS or checking
+            GPU availability.
+
+      # P95 LLM latency exceeds 60 seconds.
+      - alert: LLMHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(llm_request_duration_seconds_bucket[10m])
+          ) > 60
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "LLM P95 latency > 60s"
+          description: "Ollama model {{ $labels.model }} P95 response time > 60s."
+
+  # ── API layer ────────────────────────────────────────────────────────────────
+  - name: api
+    rules:
+
+      # HTTP 5xx rate exceeds 5% of all requests.
+      - alert: HighAPIErrorRate
+        expr: |
+          (
+            rate(http_requests_total{status=~"5.."}[5m])
+            /
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "API 5xx rate > 5%"
+          description: >
+            More than 5% of API requests are returning 5xx errors.
+
+      # API P99 latency exceeds 2 seconds.
+      - alert: APIHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "API P99 latency > 2s"
+          description: "99th percentile API response time is above 2 seconds."
+
+  # ── Infrastructure ───────────────────────────────────────────────────────────
+  - name: infrastructure
+    rules:
+
+      # Redis memory usage exceeds 80% of max memory.
+      - alert: RedisHighMemoryUsage
+        expr: |
+          (redis_memory_used_bytes / redis_memory_max_bytes) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "Redis memory usage > 80%"
+          description: "Redis is using more than 80% of its configured max memory."
+
+      # PostgreSQL has more than 80 active connections (default max is typically 100).
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "PostgreSQL active connections > 80"
+          description: >
+            PostgreSQL has {{ $value }} active connections. Consider adding
+            a connection pooler (PgBouncer).

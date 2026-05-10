@@ -79,7 +79,6 @@ async def _analysis_stale_recovery_loop(stop_event: asyncio.Event) -> None:
 async def lifespan(app: FastAPI):
     init_db()
     get_secret_store().bootstrap_from_env()
-    
     # Initialize observability infrastructure (LLM traces + metrics)
     try:
         from app.observability import init_observability
@@ -87,18 +86,18 @@ async def lifespan(app: FastAPI):
         logging.info("Observability infrastructure initialized (LLM traces + metrics)")
     except Exception:
         logging.exception("Failed to initialize observability infrastructure (non-fatal)")
-    
     logger = logging.getLogger(__name__)
 
     # Initialise Neo4j schema (constraints, indexes, vector indexes) if enabled
     try:
         from app.integrations.graph_database.neo4j_client import get_neo4j_client
+
         neo4j = get_neo4j_client()
         if neo4j.enabled:
             await asyncio.to_thread(neo4j.init_schema)
             logger.info("Neo4j schema initialised")
     except Exception:
-        logger.exception("Neo4j schema init failed (non-fatal — service will continue)")
+        logger.exception("Neo4j schema init failed (non-fatal - service will continue)")
 
     recovery_stop_event = asyncio.Event()
     recovery_task: asyncio.Task[None] | None = None
@@ -151,8 +150,6 @@ app = FastAPI(
 register_exception_handlers(app)
 app.add_middleware(RateLimitMiddleware)
 
-# ─── CORS Configuration ────────────────────────────────────────────────────────
-# Allow requests from frontend (Next.js running on localhost:3000 or :3001)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -170,9 +167,6 @@ app.add_middleware(
     max_age=3600,
 )
 
-# ─── Prometheus metrics ────────────────────────────────────────────────────────
-# Exposes /metrics endpoint for Prometheus scraping.
-# Called before include_router so all routes are instrumented.
 Instrumentator(
     should_group_status_codes=True,
     should_ignore_untemplated=True,
@@ -191,7 +185,6 @@ async def health():
         "api": "ok",
     }
 
-    # Check MinIO health if enabled
     if settings.OBJECT_STORAGE_ENABLED:
         try:
             minio_health = get_minio_client().health_check()
@@ -199,13 +192,11 @@ async def health():
         except Exception:
             services["minio"] = "error"
 
-    # Check Neo4j health if enabled
     if settings.NEO4J_ENABLED:
         services["neo4j"] = "configured"
 
     overall_status = "ok" if all(
-        s in ("ok", "healthy", "configured", "disabled")
-        for s in services.values()
+        s in ("ok", "healthy", "configured", "disabled") for s in services.values()
     ) else "degraded"
 
     return {"status": overall_status, "services": services}

@@ -1,0 +1,82 @@
+{
+  "__inputs": [
+    { "name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus" }
+  ],
+  "annotations": { "list": [] },
+  "editable": true,
+  "id": null,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        { "expr": "pg_stat_database_numbackends{datname=\"ai_code_review_platform\"}", "legendFormat": "Active Connections", "refId": "A" }
+      ],
+      "title": "Active DB Connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        { "expr": "rate(pg_stat_database_xact_commit{datname=\"ai_code_review_platform\"}[1m])", "legendFormat": "Commits/s", "refId": "A" },
+        { "expr": "rate(pg_stat_database_xact_rollback{datname=\"ai_code_review_platform\"}[1m])", "legendFormat": "Rollbacks/s", "refId": "B" }
+      ],
+      "title": "Transactions / sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "targets": [
+        { "expr": "rate(pg_stat_database_tup_fetched{datname=\"ai_code_review_platform\"}[1m])", "legendFormat": "Rows Fetched/s", "refId": "A" },
+        { "expr": "rate(pg_stat_database_tup_inserted{datname=\"ai_code_review_platform\"}[1m])", "legendFormat": "Rows Inserted/s", "refId": "B" }
+      ],
+      "title": "Row Activity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "pg_database_size_bytes{datname=\"ai_code_review_platform\"}", "legendFormat": "DB Size", "refId": "A" }
+      ],
+      "title": "Database Size",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "targets": [
+        { "expr": "pg_stat_database_blks_hit{datname=\"ai_code_review_platform\"}", "legendFormat": "Cache Hits", "refId": "A" },
+        { "expr": "pg_stat_database_blks_read{datname=\"ai_code_review_platform\"}", "legendFormat": "Disk Reads", "refId": "B" }
+      ],
+      "title": "Buffer Cache Hits vs Disk Reads",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "targets": [
+        { "expr": "pg_locks_count{datname=\"ai_code_review_platform\"}", "legendFormat": "{{mode}}", "refId": "A" }
+      ],
+      "title": "Lock Count by Mode",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 38,
+  "tags": ["postgresql"],
+  "templating": {
+    "list": [{ "name": "DS_PROMETHEUS", "type": "datasource", "query": "prometheus" }]
+  },
+  "title": "PostgreSQL - AI Code Review",
+  "uid": "pg-ai-review",
+  "version": 1
+}

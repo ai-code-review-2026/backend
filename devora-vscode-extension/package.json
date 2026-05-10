@@ -1,0 +1,116 @@
+{
+  "name": "devora-ai-code-review",
+  "displayName": "Devora AI Code Review",
+  "description": "Trigger Devora AI code analysis directly from VS Code.",
+  "version": "0.0.2",
+  "publisher": "devora-platform",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ai-code-review-2026/devora-vscode-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ai-code-review-2026/devora-vscode-extension/issues"
+  },
+  "homepage": "https://github.com/ai-code-review-2026/devora-vscode-extension",
+  "keywords": [
+    "devora",
+    "ai",
+    "code-review",
+    "security",
+    "fastapi",
+    "github"
+  ],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:devora.pushAndAnalyze",
+    "onCommand:devora.analyzeCurrentBranch",
+    "onCommand:devora.setPersonalToken",
+    "onCommand:devora.clearPersonalToken",
+    "onView:devoraReviewView"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "devora.pushAndAnalyze",
+        "title": "Devora: Push & Analyze"
+      },
+      {
+        "command": "devora.analyzeCurrentBranch",
+        "title": "Devora: Analyze Current Branch"
+      },
+      {
+        "command": "devora.setPersonalToken",
+        "title": "Devora: Set Personal Token"
+      },
+      {
+        "command": "devora.clearPersonalToken",
+        "title": "Devora: Clear Personal Token"
+      }
+    ],
+    "configuration": {
+      "title": "Devora AI Code Review",
+      "properties": {
+        "devora.apiUrl": {
+          "type": "string",
+          "default": "https://api.dev-ora.tn",
+          "description": "Devora backend API base URL."
+        },
+        "devora.apiToken": {
+          "type": "string",
+          "default": "",
+          "description": "Shared token sent in X-Devora-Token header."
+        },
+        "devora.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Devora project UUID. If empty, backend resolves by repository owner/name."
+        },
+        "devora.requestTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "API timeout in milliseconds."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "devora",
+          "title": "Devora",
+          "icon": "resources/devora-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "devora": [
+        {
+          "id": "devoraReviewView",
+          "name": "AI Code Review"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.27.0",
+    "typescript": "^5.4.5"
+  }
+}

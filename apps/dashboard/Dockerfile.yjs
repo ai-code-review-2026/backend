@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=1234
+
+COPY scripts/y-websocket-server.cjs ./scripts/y-websocket-server.cjs
+
+RUN --mount=type=cache,target=/root/.npm \
+    npm init -y \
+    && npm install --omit=dev --no-fund --no-audit ws@^8.20.0 y-websocket@^1.4.5 \
+    && npm cache clean --force
+
+EXPOSE 1234
+
+CMD ["node", "./scripts/y-websocket-server.cjs"]

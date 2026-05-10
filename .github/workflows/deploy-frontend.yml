@@ -1,0 +1,79 @@
+name: Deploy Frontend to VPS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/dashboard/**"
+      - ".github/workflows/deploy-frontend.yml"
+
+jobs:
+  build-and-push:
+    name: Build and Push Frontend Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push dashboard image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/dashboard
+          file: ./apps/dashboard/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://app.dev-ora.tn
+            NEXT_PUBLIC_APP_URL=https://app.dev-ora.tn
+            NEXT_PUBLIC_BACKEND_URL=https://api.dev-ora.tn
+            NEXT_PUBLIC_Y_WEBSOCKET_URL=wss://yjs.dev-ora.tn
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+            NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+          cache-from: type=gha,scope=frontend-dashboard
+          cache-to: type=gha,mode=max,scope=frontend-dashboard
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-dashboard:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-dashboard:${{ github.sha }}
+
+      - name: Build and push yjs image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/dashboard
+          file: ./apps/dashboard/Dockerfile.yjs
+          push: true
+          cache-from: type=gha,scope=frontend-yjs
+          cache-to: type=gha,mode=max,scope=frontend-yjs
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-yjs:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-yjs:${{ github.sha }}
+
+  deploy:
+    name: Deploy Frontend on VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH deploy frontend
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/ai-review/frontend
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-dashboard:latest
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-yjs:latest
+            docker compose up -d --force-recreate
+            sleep 20
+            curl -I http://127.0.0.1:3001

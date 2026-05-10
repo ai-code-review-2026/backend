@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Planification Agile — AI Code Review Platform (GraphRAG / Neo4j)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --primary: #4F46E5;
+    --primary-dark: #3730A3;
+    --primary-light: #EEF2FF;
+    --secondary: #06B6D4;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --dark: #0F172A;
+    --gray: #64748B;
+    --light: #F8FAFC;
+    --border: #E2E8F0;
+    --white: #FFFFFF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--white);
+    color: var(--dark);
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+
+  /* ── COVER PAGE ── */
+  .cover {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #312E81 100%);
+    color: white;
+    text-align: center;
+    padding: 60px;
+    page-break-after: always;
+  }
+  .cover-logo {
+    width: 80px; height: 80px;
+    background: linear-gradient(135deg, #4F46E5, #06B6D4);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px; margin-bottom: 40px;
+    box-shadow: 0 20px 60px rgba(79,70,229,0.4);
+  }
+  .cover h1 {
+    font-size: 32pt; font-weight: 700; margin-bottom: 12px;
+    background: linear-gradient(135deg, #fff, #A5B4FC);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .cover h2 {
+    font-size: 16pt; font-weight: 300; color: #A5B4FC; margin-bottom: 8px;
+  }
+  .cover-sub {
+    font-size: 11pt; color: #818CF8; margin-bottom: 60px;
+  }
+  .cover-meta {
+    display: flex; gap: 40px; flex-wrap: wrap; justify-content: center;
+  }
+  .cover-badge {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 12px; padding: 16px 24px;
+    backdrop-filter: blur(10px);
+  }
+  .cover-badge .val {
+    font-size: 22pt; font-weight: 700; color: #A5B4FC;
+  }
+  .cover-badge .lbl {
+    font-size: 9pt; color: #C7D2FE; margin-top: 4px;
+  }
+  .cover-footer {
+    position: absolute; bottom: 40px;
+    font-size: 9pt; color: rgba(255,255,255,0.4);
+  }
+
+  /* ── LAYOUT ── */
+  .page { max-width: 1000px; margin: 0 auto; padding: 40px 50px; }
+
+  /* ── SECTION HEADERS ── */
+  .section-header {
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: white; padding: 24px 32px; border-radius: 16px;
+    margin: 40px 0 24px; page-break-before: always;
+  }
+  .section-header h2 {
+    font-size: 18pt; font-weight: 700; margin-bottom: 4px;
+  }
+  .section-header p { font-size: 10pt; color: #C7D2FE; }
+
+  h3 {
+    font-size: 13pt; font-weight: 600; color: var(--primary-dark);
+    margin: 28px 0 12px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary-light);
+  }
+  h4 {
+    font-size: 11pt; font-weight: 600; color: var(--dark);
+    margin: 20px 0 8px;
+  }
+
+  /* ── SCENARIO BOX ── */
+  .scenario-box {
+    background: #0F172A; border-radius: 16px; padding: 28px;
+    font-family: 'JetBrains Mono', monospace; font-size: 8.5pt;
+    line-height: 1.7; color: #E2E8F0; margin: 24px 0;
+    border: 1px solid #1E293B; overflow-x: auto;
+    white-space: pre;
+  }
+  .scenario-box .etape { color: #60A5FA; font-weight: 600; }
+  .scenario-box .arrow { color: #34D399; }
+  .scenario-box .box-border { color: #475569; }
+
+  /* ── NAVIGATION CARDS ── */
+  .nav-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin: 24px 0; }
+  .nav-card {
+    border-radius: 14px; padding: 20px; border: 1px solid var(--border);
+  }
+  .nav-card.dev { border-top: 4px solid var(--primary); background: #F5F3FF; }
+  .nav-card.admin { border-top: 4px solid var(--danger); background: #FFF5F5; }
+  .nav-card.tl { border-top: 4px solid var(--success); background: #F0FDF4; }
+  .nav-card h4 {
+    font-size: 11pt; font-weight: 700; margin-bottom: 12px; display: flex;
+    align-items: center; gap: 8px;
+  }
+  .nav-card.dev h4 { color: var(--primary); }
+  .nav-card.admin h4 { color: var(--danger); }
+  .nav-card.tl h4 { color: var(--success); }
+  .nav-item {
+    font-size: 8.5pt; padding: 4px 0; color: var(--gray);
+    border-bottom: 1px dashed var(--border);
+  }
+  .nav-item:last-child { border-bottom: none; }
+  .nav-item strong { color: var(--dark); font-weight: 500; }
+  .nav-sub {
+    font-size: 8pt; color: var(--gray); padding: 2px 0 2px 12px;
+  }
+
+  /* ── SPRINT CARDS ── */
+  .sprint-card {
+    border-radius: 16px; border: 1px solid var(--border);
+    margin: 28px 0; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    page-break-inside: avoid;
+  }
+  .sprint-header {
+    padding: 20px 28px; display: flex; justify-content: space-between;
+    align-items: flex-start; flex-wrap: wrap; gap: 12px;
+  }
+  .sprint-header.s1 { background: linear-gradient(135deg, #4F46E5, #7C3AED); color: white; }
+  .sprint-header.s2 { background: linear-gradient(135deg, #0891B2, #0E7490); color: white; }
+  .sprint-header.s3 { background: linear-gradient(135deg, #059669, #047857); color: white; }
+  .sprint-header.s4 { background: linear-gradient(135deg, #D97706, #B45309); color: white; }
+  .sprint-header.s5 { background: linear-gradient(135deg, #DC2626, #B91C1C); color: white; }
+  .sprint-header.s6 { background: linear-gradient(135deg, #0F172A, #1E293B); color: white; }
+  .sprint-title { font-size: 13pt; font-weight: 700; margin-bottom: 4px; }
+  .sprint-meta {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .sprint-badge {
+    background: rgba(255,255,255,0.2); border-radius: 8px;
+    padding: 4px 12px; font-size: 9pt; font-weight: 500;
+  }
+  .sprint-body { padding: 24px 28px; }
+
+  /* ── TABLES ── */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 9.5pt; }
+  thead th {
+    background: var(--primary); color: white;
+    padding: 10px 12px; text-align: left; font-weight: 600; font-size: 9pt;
+  }
+  thead th:first-child { border-radius: 8px 0 0 0; }
+  thead th:last-child { border-radius: 0 8px 0 0; }
+  tbody tr:nth-child(even) { background: var(--light); }
+  tbody tr:hover { background: var(--primary-light); }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td:first-child { font-family: 'JetBrains Mono', monospace; font-size: 8.5pt; color: var(--primary); font-weight: 600; }
+  .sp-badge {
+    display: inline-block; background: var(--primary);
+    color: white; border-radius: 6px; padding: 2px 8px; font-size: 8pt; font-weight: 600;
+  }
+  .sp-total {
+    background: var(--primary-dark); color: white;
+    font-weight: 700; font-size: 10pt;
+  }
+
+  /* ── MODULE BADGES ── */
+  .module-header {
+    display: flex; align-items: center; gap: 10px; margin: 24px 0 12px;
+  }
+  .module-badge {
+    padding: 4px 14px; border-radius: 20px; font-size: 9pt;
+    font-weight: 700; letter-spacing: 0.5px;
+  }
+  .mod-auth { background: #EEF2FF; color: #4338CA; }
+  .mod-proj { background: #F0FDF4; color: #166534; }
+  .mod-pr   { background: #FFF7ED; color: #9A3412; }
+  .mod-ana  { background: #F0F9FF; color: #075985; }
+  .mod-neo  { background: #FDF4FF; color: #7E22CE; }
+  .mod-kb   { background: #FFF1F2; color: #BE123C; }
+  .mod-rag  { background: #ECFDF5; color: #065F46; }
+  .mod-rev  { background: #FFFBEB; color: #92400E; }
+  .mod-tl   { background: #F0FDF4; color: #14532D; }
+  .mod-team { background: #EFF6FF; color: #1E40AF; }
+  .mod-an   { background: #FDF2F8; color: #831843; }
+  .mod-notif{ background: #FFF7ED; color: #7C2D12; }
+  .mod-adm  { background: #F8FAFC; color: #334155; }
+  .mod-mob  { background: #F0F9FF; color: #0C4A6E; }
+  .mod-do   { background: #0F172A; color: #94A3B8; }
+
+  /* ── SPEC BOXES ── */
+  .spec-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 12px 0; }
+  .spec-item {
+    background: var(--light); border-radius: 10px; padding: 16px;
+    border-left: 4px solid var(--primary);
+  }
+  .spec-item h5 { font-size: 9.5pt; font-weight: 700; color: var(--primary-dark); margin-bottom: 6px; }
+  .spec-item p { font-size: 9pt; color: var(--gray); line-height: 1.6; }
+
+  /* ── UC TABLE ── */
+  .uc-table thead th { background: #0F172A; }
+  .uc-table td:first-child { font-family: 'Inter', sans-serif; color: var(--dark); font-weight: 500; }
+
+  /* ── CU CARDS ── */
+  .cu-card {
+    background: var(--light); border-radius: 12px; padding: 18px 20px;
+    margin: 12px 0; border: 1px solid var(--border);
+  }
+  .cu-card h5 { font-size: 10pt; font-weight: 700; color: var(--primary-dark); margin-bottom: 10px; }
+  .cu-row { display: flex; gap: 8px; margin: 5px 0; font-size: 9pt; }
+  .cu-label {
+    min-width: 110px; font-weight: 600; color: var(--gray); flex-shrink: 0;
+  }
+  .cu-val { color: var(--dark); }
+
+  /* ── SUMMARY TABLE ── */
+  .summary-table thead th { background: #0F172A; }
+  .summary-table td { font-size: 9pt; }
+  .r1 { background: #EEF2FF !important; }
+  .r2 { background: #FFF7ED !important; }
+  .r3 { background: #F0FDF4 !important; }
+
+  /* ── ACTORS TABLE ── */
+  .actor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .actor-card {
+    border-radius: 12px; padding: 18px; border: 1px solid var(--border);
+    display: flex; gap: 14px; align-items: flex-start;
+  }
+  .actor-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .actor-icon.dev { background: #EEF2FF; }
+  .actor-icon.tl  { background: #F0FDF4; }
+  .actor-icon.adm { background: #FFF1F2; }
+  .actor-icon.ai  { background: #FDF4FF; }
+  .actor-card h5 { font-size: 10pt; font-weight: 700; margin-bottom: 4px; color: var(--dark); }
+  .actor-card p  { font-size: 8.5pt; color: var(--gray); line-height: 1.5; }
+
+  /* ── RELEASE HEADER ── */
+  .release-header {
+    padding: 28px 32px; border-radius: 16px; margin: 48px 0 24px;
+    color: white; page-break-before: always;
+  }
+  .release-header.r1 { background: linear-gradient(135deg, #4338CA, #6D28D9); }
+  .release-header.r2 { background: linear-gradient(135deg, #B45309, #D97706); }
+  .release-header.r3 { background: linear-gradient(135deg, #065F46, #059669); }
+  .release-header h2 { font-size: 16pt; font-weight: 700; margin-bottom: 6px; }
+  .release-header .goal { font-size: 10pt; color: rgba(255,255,255,0.8); margin-top: 8px; }
+
+  /* ── CORRECTIONS TABLE ── */
+  .corr-table thead th { background: #B91C1C; }
+  .corr-table td:first-child { color: #B91C1C; font-weight: 600; font-family: 'Inter', sans-serif; }
+
+  /* ── PRINT ── */
+  @media print {
+    body { font-size: 9.5pt; }
+    .cover { page-break-after: always; }
+    .section-header { page-break-before: always; }
+    .sprint-card { page-break-inside: avoid; }
+    .release-header { page-break-before: always; }
+    @page { margin: 15mm 15mm 18mm 15mm; size: A4; }
+  }
+
+  /* ── FOOTER ── */
+  .doc-footer {
+    text-align: center; padding: 40px; margin-top: 60px;
+    border-top: 2px solid var(--border); color: var(--gray); font-size: 9pt;
+  }
+
+  p { margin: 8px 0; }
+  ul { padding-left: 20px; margin: 8px 0; }
+  li { font-size: 9.5pt; margin: 3px 0; color: var(--gray); }
+  li strong { color: var(--dark); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════ COVER ══ -->
+<div class="cover">
+  <div class="cover-logo">🧠</div>
+  <h1>AI Code Review Platform</h1>
+  <h2>Planification Agile Complète — GraphRAG / Neo4j</h2>
+  <div class="cover-sub">Version finale enrichie — Navigation complète par rôle</div>
+  <div class="cover-meta">
+    <div class="cover-badge"><div class="val">6</div><div class="lbl">Sprints</div></div>
+    <div class="cover-badge"><div class="val">3</div><div class="lbl">Releases</div></div>
+    <div class="cover-badge"><div class="val">662</div><div class="lbl">Story Points</div></div>
+    <div class="cover-badge"><div class="val">18</div><div class="lbl">Semaines</div></div>
+    <div class="cover-badge"><div class="val">Neo4j</div><div class="lbl">Graph Store Unique</div></div>
+  </div>
+  <div class="cover-footer">Rapport PFE · 2025–2026 · GraphRAG-Based Automated Code Review System</div>
+</div>
+
+<div class="page">
+
+<!-- ═══════════════════════════════════════════════ SECTION 1 ══ -->
+<div class="section-header">
+  <h2>1. Logique Corrigée du Système</h2>
+  <p>Scénario complet du début à la fin — Architecture GraphRAG / Neo4j</p>
+</div>
+
+<h3>1.1 Flux bout en bout — Scénario complet</h3>
+<div class="scenario-box">┌──────────────────────────────────────────────────────────────────────┐
+│                  SCÉNARIO COMPLET — DÉBUT À LA FIN                   │
+├──────────────────────────────────────────────────────────────────────┤
+│  ÉTAPE 0 — SETUP PLATEFORME                                          │
+│  Admin : crée org / équipes / politiques / KB / intégrations         │
+│  Tech Lead : crée projet → lie repo GitHub → configure branches      │
+│                                                                      │
+│  ÉTAPE 1 — ONBOARDING DU REPOSITORY (une seule fois par repo)        │
+│  → Clone repo → Parsing AST (Tree-sitter)                            │
+│  → Chunking code-aware (fonction / classe / module)                  │
+│  → Construction graphe Neo4j :                                       │
+│     Org → Project → Repo → File → Module → Class → Function → Chunk │
+│  → Embeddings natifs Neo4j                                           │
+│  → Relations : CONTAINS, DEFINES, CALLS, IMPORTS, DEPENDS_ON         │
+│  → Indexation KB (rules, docs, patterns) → HAS_RULE                 │
+│                                                                      │
+│  ÉTAPE 2 — DÉCLENCHEMENT D'UNE ANALYSE (chaque PR)                  │
+│  Developer ouvre PR → Webhook GitHub → POST /v1/analyses             │
+│  → Enqueue Celery → RECEIVED → QUEUED                                │
+│  → PR visible dans "All PRs" avec statut "New attention"             │
+│                                                                      │
+│  ÉTAPE 3 — PRÉ-TRAITEMENT DU DIFF                                    │
+│  → Parsing diff (fichiers / hunks / lignes)                          │
+│  → Scan + redaction secrets                                          │
+│  → Classification (bugfix / feature / refactor)                      │
+│  → Indexation incrémentale Neo4j (fichiers modifiés uniquement)      │
+│                                                                      │
+│  ÉTAPE 4 — DOUBLE ANALYSE EN PARALLÈLE                               │
+│  ┌──────────────────────────┐  ┌────────────────────────────────┐    │
+│  │  ANALYSE STATIQUE         │  │  ANALYSE AI — GraphRAG          │   │
+│  │  Ruff / Semgrep / ESLint  │  │  1. FTS symbolique (Neo4j)      │   │
+│  │  SQLFluff / CleanCode     │  │  2. Traversée multi-hop         │   │
+│  │  → Findings lignes modif  │  │  3. Extraction sous-graphe      │   │
+│  │  → Pipeline unifié        │  │  4. KB Rules (priorité haute)   │   │
+│  └──────────────────────────┘  │  5. Assemblage contexte LLM      │   │
+│                                │  6. Génération ancrée             │   │
+│                                │  7. Guardrails anti-hallucination │   │
+│                                └────────────────────────────────┘    │
+│                                                                      │
+│  ÉTAPE 5 — REVUE INTELLIGENTE (fusion des deux analyses)             │
+│  → Résumé PR + risque global + tests suggérés + merge readiness      │
+│  → Auto-fix suggestions (graphe + KB)                                │
+│  → Review classifiée : majeure / mineure / bloquante                 │
+│                                                                      │
+│  ÉTAPE 6 — SORTIE ET TRAÇABILITÉ                                     │
+│  → Commentaires editor-ready (fichier + ligne + preuve + règle)      │
+│  → Commentaire publié sur PR GitHub                                  │
+│  → Rapport dans dashboard Developer (résultat / règle / citations)   │
+│  → AnalysisRun stocké dans Neo4j (HAS_HISTORY)                      │
+│  → PR passe à "Waiting for reviewer" dans "All PRs"                  │
+│                                                                      │
+│  ÉTAPE 7 — CONTRÔLE TECH LEAD                                        │
+│  → PR apparaît dans Reviews Queue                                    │
+│  → Consultation dans Code editor avec commentaires inline            │
+│  → Décision : Approuver / Bloquer / Débloquer / Assigner             │
+│  → Notifications Developer (WebSocket / email / Slack / push)        │
+│  → PR change de statut : Approved / Return / Waiting for author      │
+└──────────────────────────────────────────────────────────────────────┘</div>
+
+<h3>1.2 Navigation complète par rôle</h3>
+<div class="nav-grid">
+  <div class="nav-card dev">
+    <h4>👨‍💻 Developer</h4>
+    <div class="nav-item"><strong>Tableau de bord</strong></div>
+    <div class="nav-sub">├ Statistiques</div>
+    <div class="nav-sub">├ Insights (patterns IA)</div>
+    <div class="nav-sub">└ Ticket / Analyse</div>
+    <div class="nav-item"><strong>All PRs</strong></div>
+    <div class="nav-sub">├ New attention</div>
+    <div class="nav-sub">├ Return</div>
+    <div class="nav-sub">├ Approved</div>
+    <div class="nav-sub">├ Waiting for reviewer</div>
+    <div class="nav-sub">├ Drafts</div>
+    <div class="nav-sub">└ Waiting for author</div>
+    <div class="nav-item"><strong>Workspace</strong></div>
+    <div class="nav-sub">├ Organisation</div>
+    <div class="nav-sub">├ Teams / Équipes</div>
+    <div class="nav-sub">├ Liste des projets</div>
+    <div class="nav-sub">├ Liste des repos</div>
+    <div class="nav-sub">├ Base de connaissances / RAG</div>
+    <div class="nav-sub">├ Code editor</div>
+    <div class="nav-sub">└ Rapports récents</div>
+    <div class="nav-item"><strong>Tous les analytics</strong></div>
+  </div>
+  <div class="nav-card admin">
+    <h4>🔐 Admin</h4>
+    <div class="nav-item"><strong>Dashboard</strong></div>
+    <div class="nav-sub">└ Suivi ligne par projet</div>
+    <div class="nav-item"><strong>Organisation</strong></div>
+    <div class="nav-item"><strong>Base de connaissance</strong></div>
+    <div class="nav-sub">└ Éditeur RAG</div>
+    <div class="nav-item"><strong>Policies et rules</strong></div>
+    <div class="nav-item"><strong>Utilisateurs</strong></div>
+    <div class="nav-item"><strong>Intégrations</strong></div>
+    <div class="nav-sub">├ GitHub App</div>
+    <div class="nav-sub">├ Jira API</div>
+    <div class="nav-sub">├ Slack webhook</div>
+    <div class="nav-sub">└ CI tokens</div>
+  </div>
+  <div class="nav-card tl">
+    <h4>🎯 Tech Lead</h4>
+    <div class="nav-item"><strong>PRs / Reviews en attente</strong></div>
+    <div class="nav-item"><strong>Reviews queue</strong></div>
+    <div class="nav-sub">├ Commentaire / nouveaux en attente</div>
+    <div class="nav-sub">├ En cours</div>
+    <div class="nav-sub">├ Review majeure</div>
+    <div class="nav-sub">├ Review mineure</div>
+    <div class="nav-sub">└ Signal / file d'attente</div>
+    <div class="nav-item"><strong>Dans la review</strong></div>
+    <div class="nav-sub">├ Nouveaux dispo</div>
+    <div class="nav-sub">├ Modifier / analyser</div>
+    <div class="nav-sub">├ Résultat / règle</div>
+    <div class="nav-sub">└ Consulter</div>
+    <div class="nav-item"><strong>Actions</strong></div>
+    <div class="nav-sub">├ Approuver / Bloquer / Débloquer / Assigner</div>
+    <div class="nav-item"><strong>Code editor</strong></div>
+    <div class="nav-item"><strong>Teams</strong></div>
+    <div class="nav-sub">├ Gérer membres</div>
+    <div class="nav-sub">└ Analytics équipe</div>
+    <div class="nav-item"><strong>Historique</strong></div>
+    <div class="nav-item"><strong>Analyses des reviews</strong></div>
+    <div class="nav-item"><strong>Team analytics</strong></div>
+    <div class="nav-item"><strong>Templates</strong></div>
+    <div class="nav-item"><strong>Paramètre de revue</strong></div>
+    <div class="nav-item"><strong>Statut des reviews</strong></div>
+    <div class="nav-item"><strong>Liste des analyses</strong></div>
+  </div>
+</div>
+
+<h3>1.3 Acteurs du système</h3>
+<div class="actor-grid">
+  <div class="actor-card">
+    <div class="actor-icon dev">👨‍💻</div>
+    <div><h5>Developer</h5><p>Ouvre des PRs, consulte Insights + analytics + All PRs, travaille dans son Workspace, reçoit les notifications</p></div>
+  </div>
+  <div class="actor-card">
+    <div class="actor-icon tl">🎯</div>
+    <div><h5>Tech Lead</h5><p>Contrôle les reviews, gère les équipes, configure les paramètres de revue, applique les décisions (Approuver / Bloquer / Assigner)</p></div>
+  </div>
+  <div class="actor-card">
+    <div class="actor-icon adm">🔐</div>
+    <div><h5>Admin</h5><p>Administre la plateforme, configure la KB / RAG, gère les politiques, les utilisateurs et les intégrations</p></div>
+  </div>
+  <div class="actor-card">
+    <div class="actor-icon ai">🤖</div>
+    <div><h5>Système IA (GraphRAG)</h5><p>Indexe les repos, analyse en double parallèle (statique + GraphRAG), génère des findings editor-ready ancrés dans Neo4j et la KB</p></div>
+  </div>
+</div>
+
+<h3>1.4 Corrections architecturales</h3>
+<table class="corr-table">
+  <thead><tr><th>Incohérence détectée</th><th>Correction appliquée</th></tr></thead>
+  <tbody>
+    <tr><td>Qdrant comme vector store</td><td>Supprimé — Neo4j est l'unique store (graphe + vecteurs natifs)</td></tr>
+    <tr><td>RAG classique (cosinus seule)</td><td>GraphRAG : FTS symbolique + traversée multi-hop + sous-graphe + KB</td></tr>
+    <tr><td>Chunking naïf par tokens</td><td>Chunking AST-aware Tree-sitter (fonction / classe / module)</td></tr>
+    <tr><td>Re-indexation complète à chaque PR</td><td>Indexation incrémentale (fichiers modifiés uniquement)</td></tr>
+    <tr><td>Contexte repo en priorité pour la génération</td><td>Priorité inversée : KB rules → graphe → repo</td></tr>
+    <tr><td>Analyse statique et GraphRAG séquentiels</td><td>Double analyse parallèle fusionnée avant la sortie</td></tr>
+    <tr><td>Commentaires génériques sans traçabilité</td><td>Commentaires editor-ready avec fichier + ligne + preuve + règle</td></tr>
+  </tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════ SECTION 2 ══ -->
+<div class="section-header">
+  <h2>2. Product Backlog Complet</h2>
+  <p>Toutes les User Stories organisées par module — 662 Story Points au total</p>
+</div>
+
+<!-- MODULE AUTH -->
+<div class="module-header"><span class="module-badge mod-auth">MODULE AUTH</span><span style="color:var(--gray);font-size:9pt">Authentification & Contrôle d'Accès</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-AUTH-01</td><td>En tant que <strong>Developer</strong>, je veux m'inscrire et me connecter via Clerk afin d'accéder à la plateforme</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-AUTH-02</td><td>En tant qu'<strong>Admin</strong>, je veux gérer les rôles (admin / reviewer / developer) afin de contrôler les accès</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-AUTH-03</td><td>En tant que <strong>Developer</strong>, je veux être redirigé vers mon dashboard adapté après connexion</td><td><span class="sp-badge">2</span></td></tr>
+<tr><td>US-AUTH-04</td><td>En tant que <strong>Système IA</strong>, je veux synchroniser automatiquement les utilisateurs Clerk ↔ backend</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-AUTH-05</td><td>En tant qu'<strong>Admin</strong>, je veux que le RBAC soit appliqué sur chaque endpoint API</td><td><span class="sp-badge">5</span></td></tr>
+</tbody></table>
+
+<!-- MODULE PROJ -->
+<div class="module-header"><span class="module-badge mod-proj">MODULE PROJ</span><span style="color:var(--gray);font-size:9pt">Projets, Organisations & Workspace</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-PROJ-01</td><td>En tant que <strong>Developer</strong>, je veux créer un projet lié à un dépôt GitHub</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-PROJ-02</td><td>En tant que <strong>Developer</strong>, je veux importer mes dépôts GitHub depuis une liste</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-PROJ-03</td><td>En tant que <strong>Tech Lead</strong>, je veux déclencher l'indexation initiale complète afin de construire le graphe Neo4j</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-PROJ-04</td><td>En tant que <strong>Tech Lead</strong>, je veux configurer les branches cibles de l'analyse automatique</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-PROJ-05</td><td>En tant qu'<strong>Admin</strong>, je veux créer et gérer les organisations et les équipes</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-PROJ-06</td><td>En tant qu'<strong>Admin</strong>, je veux définir des politiques de branches au niveau organisation</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-PROJ-07</td><td>En tant que <strong>Developer</strong>, je veux accéder à mon Workspace (org, teams, projets, repos)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-PROJ-08</td><td>En tant que <strong>Developer</strong>, je veux consulter la liste de mes projets et dépôts dans le Workspace</td><td><span class="sp-badge">3</span></td></tr>
+</tbody></table>
+
+<!-- MODULE PR -->
+<div class="module-header"><span class="module-badge mod-pr">MODULE PR</span><span style="color:var(--gray);font-size:9pt">Gestion des Pull Requests — Developer</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-PR-01</td><td>En tant que <strong>Developer</strong>, je veux voir toutes mes PRs dans "All PRs" avec filtres d'état</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-PR-02</td><td>En tant que <strong>Developer</strong>, je veux filtrer par état (New attention / Return / Approved / Waiting / Drafts / Waiting for author)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-PR-03</td><td>En tant que <strong>Developer</strong>, je veux voir les PRs "Return" avec les commentaires du Tech Lead</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-PR-04</td><td>En tant que <strong>Developer</strong>, je veux sauvegarder une PR en brouillon (Draft) avant de la soumettre</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-PR-05</td><td>En tant que <strong>Developer</strong>, je veux voir quand une PR passe à "Waiting for author"</td><td><span class="sp-badge">3</span></td></tr>
+</tbody></table>
+
+<!-- MODULE ANA -->
+<div class="module-header"><span class="module-badge mod-ana">MODULE ANA</span><span style="color:var(--gray);font-size:9pt">Pipeline d'Analyse & Pré-traitement</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-ANA-01</td><td>En tant que <strong>Developer</strong>, je veux soumettre une PR pour analyse automatique</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-ANA-02</td><td>En tant que <strong>Système IA</strong>, je veux parser le diff unifié en structures fichier/hunk/ligne</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-ANA-03</td><td>En tant que <strong>Système IA</strong>, je veux détecter et redacter les secrets (entropie + regex)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-ANA-04</td><td>En tant que <strong>Système IA</strong>, je veux classifier le changement (bugfix / feature / refactor)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-ANA-05</td><td>En tant que <strong>Système IA</strong>, je veux mettre à jour Neo4j de façon incrémentale (re-chunk fichiers modifiés)</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-ANA-06</td><td>En tant que <strong>Developer</strong>, je veux suivre l'état d'analyse en temps réel via WebSocket (RECEIVED → COMPLETED)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-ANA-07</td><td>En tant que <strong>Système IA</strong>, je veux traiter les analyses de façon asynchrone via Celery + Redis</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-ANA-08</td><td>En tant que <strong>Système IA</strong>, je veux récupérer automatiquement les analyses bloquées (stale recovery)</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-ANA-09</td><td>En tant que <strong>Système IA</strong>, je veux exécuter Ruff, Semgrep, ESLint, SQLFluff, CleanCode sur lignes modifiées (pipeline unifié)</td><td><span class="sp-badge">13</span></td></tr>
+</tbody></table>
+
+<!-- MODULE NEO -->
+<div class="module-header"><span class="module-badge mod-neo">MODULE NEO</span><span style="color:var(--gray);font-size:9pt">Graphe Neo4j & Indexation</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-NEO-01</td><td>En tant que <strong>Système IA</strong>, je veux construire le schéma Neo4j complet (15 nœuds, 15 relations, indexes FTS, contraintes)</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-NEO-02</td><td>En tant que <strong>Système IA</strong>, je veux découper le code par chunking AST-aware (Tree-sitter : fonction / classe / module)</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-NEO-03</td><td>En tant que <strong>Système IA</strong>, je veux générer des embeddings et les stocker nativement dans Neo4j</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-NEO-04</td><td>En tant que <strong>Système IA</strong>, je veux construire le graphe de dépendances (CALLS, IMPORTS, DEPENDS_ON, DEFINES)</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-NEO-05</td><td>En tant que <strong>Système IA</strong>, je veux stocker l'historique AnalysisRun dans Neo4j via HAS_HISTORY</td><td><span class="sp-badge">8</span></td></tr>
+</tbody></table>
+
+<!-- MODULE KB -->
+<div class="module-header"><span class="module-badge mod-kb">MODULE KB</span><span style="color:var(--gray);font-size:9pt">Base de Connaissances & Rules Engine</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-KB-01</td><td>En tant que <strong>Tech Lead</strong>, je veux importer des documents (Markdown, PDF, règles, patterns) dans la KB</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-KB-02</td><td>En tant que <strong>Système IA</strong>, je veux indexer la KB dans Neo4j et la connecter aux entités code (HAS_RULE)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-KB-03</td><td>En tant que <strong>Système IA</strong>, je veux consulter les règles KB en priorité lors de la génération</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-KB-04</td><td>En tant qu'<strong>Admin</strong>, je veux gérer la KB et éditer les documents RAG via l'Éditeur RAG</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-KB-05</td><td>En tant que <strong>Tech Lead</strong>, je veux voir quelles règles KB ont été appliquées (Résultat / règle)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-KB-06</td><td>En tant que <strong>Developer</strong>, je veux consulter la Base de connaissances depuis mon Workspace</td><td><span class="sp-badge">5</span></td></tr>
+</tbody></table>
+
+<!-- MODULE RAG -->
+<div class="module-header"><span class="module-badge mod-rag">MODULE RAG</span><span style="color:var(--gray);font-size:9pt">Retrieval GraphRAG & Génération</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-RAG-01</td><td>En tant que <strong>Système IA</strong>, je veux effectuer une recherche symbolique via Neo4j FTS par nom de symbole</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-RAG-02</td><td>En tant que <strong>Système IA</strong>, je veux traverser le graphe multi-hop (CALLS, IMPORTS, DEPENDS_ON, HAS_RULE)</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-RAG-03</td><td>En tant que <strong>Système IA</strong>, je veux extraire un sous-graphe compact ordonné par pertinence</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-RAG-04</td><td>En tant que <strong>Système IA</strong>, je veux assembler le contexte LLM dans l'ordre (KB rules → graphe → repo)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-RAG-05</td><td>En tant que <strong>Système IA</strong>, je veux générer des findings via une couche LLM provider-agnostique (Ollama / Claude / OpenAI)</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-RAG-06</td><td>En tant que <strong>Système IA</strong>, je veux appliquer les guardrails anti-hallucination (citations preuves obligatoires par finding)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-RAG-07</td><td>En tant que <strong>Système IA</strong>, je veux générer des commentaires editor-ready (fichier + ligne + résumé + risque + preuve + règle)</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-RAG-08</td><td>En tant que <strong>Système IA</strong>, je veux générer des suggestions d'auto-fix (Modifier / analyser) ancrées dans le graphe et la KB</td><td><span class="sp-badge">8</span></td></tr>
+</tbody></table>
+
+<!-- MODULE REVAI -->
+<div class="module-header"><span class="module-badge mod-rev">MODULE REVAI</span><span style="color:var(--gray);font-size:9pt">Revue Intelligente & Rapport</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-REVAI-01</td><td>En tant que <strong>Système IA</strong>, je veux produire un rapport structuré (résumé + risque + tests + merge readiness) après fusion des deux analyses</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-REVAI-02</td><td>En tant que <strong>Système IA</strong>, je veux classifier chaque revue : Review majeure / mineure / Bloquante</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-REVAI-03</td><td>En tant que <strong>Developer</strong>, je veux consulter le rapport (Résultat / règle) avec findings par fichier/sévérité/règle</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-REVAI-04</td><td>En tant que <strong>Developer</strong>, je veux visualiser le diff annoté dans le Code editor avec commentaires inline et citations</td><td><span class="sp-badge">13</span></td></tr>
+<tr><td>US-REVAI-05</td><td>En tant que <strong>Developer</strong>, je veux voir les Insights IA personnalisés : patterns récurrents et recommandations</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-REVAI-06</td><td>En tant que <strong>Developer</strong>, je veux lier une analyse à un ticket Jira (Ticket / Analyse)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-REVAI-07</td><td>En tant que <strong>Developer</strong>, je veux consulter mes Rapports récents depuis le dashboard</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-REVAI-08</td><td>En tant que <strong>Developer</strong>, je veux exporter un rapport en PDF</td><td><span class="sp-badge">3</span></td></tr>
+</tbody></table>
+
+<!-- MODULE TL -->
+<div class="module-header"><span class="module-badge mod-tl">MODULE TL</span><span style="color:var(--gray);font-size:9pt">Workflow Tech Lead & Reviews</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-TL-01</td><td>En tant que <strong>Tech Lead</strong>, je veux voir le compteur de PRs / reviews en attente</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-TL-02</td><td>En tant que <strong>Tech Lead</strong>, je veux accéder à la Reviews Queue avec analyses classifiées (majeure / mineure / bloquante)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-TL-03</td><td>En tant que <strong>Tech Lead</strong>, je veux gérer l'état d'une review (Commentaire en attente / En cours / Signal)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-04</td><td>En tant que <strong>Tech Lead</strong>, je veux voir les "Nouveaux dispo" et "Nouvelles analyses signalées"</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-05</td><td>En tant que <strong>Tech Lead</strong>, je veux ouvrir une analyse dans le Code editor intégré</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-TL-06</td><td>En tant que <strong>Tech Lead</strong>, je veux consulter les findings avec leur Résultat / règle citée</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-07</td><td>En tant que <strong>Tech Lead</strong>, je veux accéder à Modifier / analyser (re-analyse + auto-fix)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-08</td><td>En tant que <strong>Tech Lead</strong>, je veux effectuer les actions : Approuver / Bloquer / Débloquer / Assigner</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-TL-09</td><td>En tant que <strong>Tech Lead</strong>, je veux consulter le Statut des reviews en temps réel</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-10</td><td>En tant que <strong>Tech Lead</strong>, je veux consulter l'Historique des reviews effectuées</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-11</td><td>En tant que <strong>Tech Lead</strong>, je veux accéder aux Analyses des reviews (métriques : précision, SLA)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-12</td><td>En tant que <strong>Tech Lead</strong>, je veux créer et gérer des Templates de revue standardisés</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-13</td><td>En tant que <strong>Tech Lead</strong>, je veux configurer les Paramètres de revue (rigueur, seuils, assignation auto)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TL-14</td><td>En tant que <strong>Tech Lead</strong>, je veux consulter la Liste des analyses de tous les projets</td><td><span class="sp-badge">5</span></td></tr>
+</tbody></table>
+
+<!-- MODULE TEAM + AN + NOTIF + ADM + MOB + DO -->
+<div class="module-header"><span class="module-badge mod-team">MODULE TEAM</span><span style="color:var(--gray);font-size:9pt">Gestion des Équipes</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-TEAM-01</td><td>En tant que <strong>Tech Lead</strong>, je veux gérer les membres de mes équipes (Gérer membres : ajouter, retirer, changer de rôle)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-TEAM-02</td><td>En tant que <strong>Tech Lead</strong>, je veux assigner une review à un membre spécifique de l'équipe</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-TEAM-03</td><td>En tant que <strong>Tech Lead</strong>, je veux consulter les Analytics équipe (performance, charge de travail, tendances)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-TEAM-04</td><td>En tant que <strong>Developer</strong>, je veux voir la liste de mes équipes dans le Workspace</td><td><span class="sp-badge">3</span></td></tr>
+</tbody></table>
+
+<div class="module-header"><span class="module-badge mod-an">MODULE AN</span><span style="color:var(--gray);font-size:9pt">Analytics & Statistiques</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-AN-01</td><td>En tant que <strong>Developer</strong>, je veux consulter mes Statistiques (évolution qualité, findings/semaine)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-AN-02</td><td>En tant que <strong>Developer</strong>, je veux consulter Tous les analytics (équipe + projet + personnel)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-AN-03</td><td>En tant que <strong>Tech Lead</strong>, je veux consulter les Team analytics (SLA, taux de résolution)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-AN-04</td><td>En tant qu'<strong>Admin</strong>, je veux voir le Suivi ligne par projet (qualité par fichier, hotspots)</td><td><span class="sp-badge">8</span></td></tr>
+</tbody></table>
+
+<div class="module-header"><span class="module-badge mod-notif">MODULE NOTIF</span><span style="color:var(--gray);font-size:9pt">Notifications Multi-canal</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-NOTIF-01</td><td>En tant que <strong>Developer</strong>, je veux recevoir une notification WebSocket quand une PR passe à "Waiting for author" ou "Approved"</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-NOTIF-02</td><td>En tant que <strong>Developer</strong>, je veux recevoir un email pour les findings critiques ou reviews bloquantes</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-NOTIF-03</td><td>En tant que <strong>Tech Lead</strong>, je veux recevoir une notification Slack quand une Review majeure/bloquante arrive</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-NOTIF-04</td><td>En tant que <strong>Developer</strong>, je veux recevoir des notifications push navigateur et mobile</td><td><span class="sp-badge">5</span></td></tr>
+</tbody></table>
+
+<div class="module-header"><span class="module-badge mod-adm">MODULE ADM</span><span style="color:var(--gray);font-size:9pt">Administration & Sécurité</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-ADM-01</td><td>En tant qu'<strong>Admin</strong>, je veux gérer les comptes utilisateurs (création, rôle, désactivation)</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-ADM-02</td><td>En tant qu'<strong>Admin</strong>, je veux gérer les secrets chiffrés (Fernet) par projet</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-ADM-03</td><td>En tant qu'<strong>Admin</strong>, je veux créer, tester et activer des Policies et rules de branches</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-ADM-04</td><td>En tant qu'<strong>Admin</strong>, je veux consulter la piste d'audit complète des actions utilisateurs</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-ADM-05</td><td>En tant qu'<strong>Admin</strong>, je veux générer et révoquer des tokens CI par projet</td><td><span class="sp-badge">3</span></td></tr>
+<tr><td>US-ADM-06</td><td>En tant qu'<strong>Admin</strong>, je veux gérer les Intégrations (GitHub App, Jira, Slack, CI tokens) depuis un panneau unifié</td><td><span class="sp-badge">8</span></td></tr>
+</tbody></table>
+
+<div class="module-header"><span class="module-badge mod-mob">MODULE MOB</span><span style="color:var(--gray);font-size:9pt">Application Mobile</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-MOB-01</td><td>En tant que <strong>Developer</strong>, je veux me connecter à l'app mobile avec Clerk</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-MOB-02</td><td>En tant que <strong>Developer</strong>, je veux consulter mes All PRs avec leurs statuts sur mobile</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-MOB-03</td><td>En tant que <strong>Developer</strong>, je veux lire le résumé d'une analyse (risque, findings count) sur mobile</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-MOB-04</td><td>En tant que <strong>Developer</strong>, je veux recevoir des notifications push mobiles pour "Return" et "Waiting for author"</td><td><span class="sp-badge">5</span></td></tr>
+<tr><td>US-MOB-05</td><td>En tant que <strong>Tech Lead</strong>, je veux consulter les indicateurs de santé (queue depth, failure rate) sur mobile</td><td><span class="sp-badge">3</span></td></tr>
+</tbody></table>
+
+<div class="module-header"><span class="module-badge mod-do">MODULE DO</span><span style="color:var(--gray);font-size:9pt">DevOps, CI/CD & Cloud</span></div>
+<table><thead><tr><th style="width:110px">ID</th><th>User Story</th><th style="width:50px">SP</th></tr></thead>
+<tbody>
+<tr><td>US-DO-01</td><td>En tant que <strong>Developer</strong>, je veux démarrer la plateforme avec <code>make up</code> (incluant Neo4j)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-DO-02</td><td>En tant qu'<strong>Admin</strong>, je veux des images Docker optimisées pour API (multi-outils) et Dashboard (multi-stage)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-DO-03</td><td>En tant qu'<strong>Admin</strong>, je veux un pipeline GitHub Actions (tests + lint + build + scan sécurité)</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-DO-04</td><td>En tant que <strong>Système IA</strong>, je veux injecter <code>.github/workflows/ai-code-review.yml</code> dans les dépôts analysés</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-DO-05</td><td>En tant qu'<strong>Admin</strong>, je veux déployer sur VPS avec Nginx + SSL Certbot + Neo4j persistant</td><td><span class="sp-badge">8</span></td></tr>
+<tr><td>US-DO-06</td><td>En tant que <strong>Tech Lead</strong>, je veux des dashboards Grafana (5 dashboards) + alertes Prometheus (9 règles)</td><td><span class="sp-badge">13</span></td></tr>
+</tbody></table>
+
+<!-- ═══════════════════════════════════════════════ SECTION 3 ══ -->
+<div class="section-header">
+  <h2>3. Planification des Releases et Sprints</h2>
+  <p>3 Releases · 6 Sprints · 18 semaines · 662 Story Points</p>
+</div>
+
+<!-- ═══ RELEASE 1 ═══ -->
+<div class="release-header r1">
+  <h2>🚀 Release 1 — Plateforme Web & Mobile Opérationnelle</h2>
+  <p><strong>Sprints 1, 2, 3</strong> · Étapes 0, 2, 3 (partiel), 6, 7 + Mobile</p>
+  <div class="goal">Livrer toutes les interfaces web des trois rôles avec navigation complète, pipeline d'analyse statique, workflow de review Tech Lead, gestion des équipes et application mobile. Sans le moteur GraphRAG.</div>
+</div>
+
+<!-- SPRINT 1 -->
+<div class="sprint-card">
+  <div class="sprint-header s1">
+    <div>
+      <div class="sprint-title">Sprint 1 — Gestion de l'Authentification, Workspace Developer &amp; Pipeline de Base</div>
+      <div class="sprint-meta">
+        <span class="sprint-badge">⏱ 3 semaines</span>
+        <span class="sprint-badge">📊 69 SP</span>
+        <span class="sprint-badge">🔖 Release 1</span>
+        <span class="sprint-badge">📍 Étapes 0, 2, 3 (partiel)</span>
+      </div>
+    </div>
+  </div>
+  <div class="sprint-body">
+    <h4>User Stories incluses</h4>
+    <table><thead><tr><th>ID</th><th>User Story</th><th>SP</th></tr></thead>
+    <tbody>
+    <tr><td>US-AUTH-01 à 05</td><td>Authentification Clerk complète + RBAC sur tous les endpoints</td><td><span class="sp-badge">18</span></td></tr>
+    <tr><td>US-PROJ-01/02</td><td>Création projet + import dépôts GitHub</td><td><span class="sp-badge">8</span></td></tr>
+    <tr><td>US-PROJ-04</td><td>Configuration branches cibles</td><td><span class="sp-badge">3</span></td></tr>
+    <tr><td>US-PROJ-07/08</td><td>Workspace Developer (org, teams, projets, repos)</td><td><span class="sp-badge">8</span></td></tr>
+    <tr><td>US-ANA-01/02/03/04/07</td><td>Soumission PR + parsing diff + secrets + classification + Celery</td><td><span class="sp-badge">27</span></td></tr>
+    <tr class="sp-total"><td colspan="2"><strong>Total Sprint 1</strong></td><td><strong>69 SP</strong></td></tr>
+    </tbody></table>
+
+    <h4>5.1 Spécification Fonctionnelle</h4>
+    <div class="spec-grid">
+      <div class="spec-item"><h5>Auth multi-rôles (Étape 0)</h5><p>Clerk login → JWT → <code>publicMetadata.role</code> → redirection : <code>/dashboard</code> (Dev) / <code>/reviewer</code> (TL) / <code>/admin</code> (Admin). RBAC middleware sur tous les endpoints FastAPI.</p></div>
+      <div class="spec-item"><h5>Workspace Developer</h5><p>Page centrale : Organisation (logo, membres), Teams (équipes), Liste projets (CRUD), Liste repos (liaison GitHub). Navigation latérale persistante.</p></div>
+      <div class="spec-item"><h5>Onboarding projet (Étape 0)</h5><p>CRUD projet + liaison GitHub + branches auto-trigger. Import repos via GitHub API. Trigger indexation → Celery <code>onboard_repository</code> (graphe Neo4j construit en Release 2).</p></div>
+      <div class="spec-item"><h5>Pipeline de base (Étapes 2–3)</h5><p><code>POST /v1/analyses</code> → RECEIVED → QUEUED → RUNNING. Parsing diff → secret scan → classification. PR visible dans "New attention" de All PRs.</p></div>
+    </div>
+
+    <h4>5.2 Analyse des Cas d'Utilisation</h4>
+    <table class="uc-table"><thead><tr><th>Cas d'utilisation</th><th>Acteur principal</th><th>Acteurs secondaires</th></tr></thead>
+    <tbody>
+    <tr><td>S'authentifier et accéder au dashboard rôle</td><td>Developer / Tech Lead / Admin</td><td>Système IA</td></tr>
+    <tr><td>Naviguer le Workspace</td><td>Developer</td><td>—</td></tr>
+    <tr><td>Créer un projet + lier GitHub</td><td>Developer</td><td>—</td></tr>
+    <tr><td>Déclencher l'onboarding (trigger)</td><td>Tech Lead</td><td>Système IA</td></tr>
+    <tr><td>Soumettre une PR → pipeline</td><td>Developer</td><td>Système IA</td></tr>
+    <tr><td>Parser diff + scanner secrets + classifier</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Voir PR en "New attention"</td><td>Developer</td><td>—</td></tr>
+    </tbody></table>
+
+    <h4>5.3 Conception des Cas d'Utilisation</h4>
+    <div class="cu-card">
+      <h5>CU-01 : S'authentifier et accéder au Workspace</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Compte Clerk, rôle configuré dans publicMetadata</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">Clerk login → JWT → sync → rôle → redirection dashboard → Workspace chargé avec org/teams/projets</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Developer voit son Workspace, PRs comptabilisées par état</span></div>
+    </div>
+    <div class="cu-card">
+      <h5>CU-02 : Soumettre une PR et voir "New attention"</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Projet existant avec project_id valide</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">POST /v1/analyses → RECEIVED → All PRs badge "New attention" → QUEUED → Worker pickup → RUNNING</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">PR visible dans All PRs > New attention, Developer notifié WebSocket</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SPRINT 2 -->
+<div class="sprint-card">
+  <div class="sprint-header s2">
+    <div>
+      <div class="sprint-title">Sprint 2 — Gestion des PRs, Analyse Statique Complète &amp; Workflow de Review Tech Lead</div>
+      <div class="sprint-meta">
+        <span class="sprint-badge">⏱ 3 semaines</span>
+        <span class="sprint-badge">📊 108 SP</span>
+        <span class="sprint-badge">🔖 Release 1</span>
+        <span class="sprint-badge">📍 Étapes 3 (complet), 6 (partiel), 7</span>
+      </div>
+    </div>
+  </div>
+  <div class="sprint-body">
+    <h4>User Stories incluses</h4>
+    <table><thead><tr><th>ID</th><th>User Story</th><th>SP</th></tr></thead>
+    <tbody>
+    <tr><td>US-PR-01 à 05</td><td>All PRs complet avec 6 états + Drafts + Waiting for author</td><td><span class="sp-badge">24</span></td></tr>
+    <tr><td>US-ANA-06/08/09</td><td>WebSocket temps réel + stale recovery + analyse statique multi-outils</td><td><span class="sp-badge">21</span></td></tr>
+    <tr><td>US-REVAI-03/04/07</td><td>Rapport (Résultat/règle) + Code editor Developer + Rapports récents</td><td><span class="sp-badge">26</span></td></tr>
+    <tr><td>US-TL-01/02/03/05/06/08</td><td>Compteur + Reviews Queue + workflow états + Code editor TL + Actions</td><td><span class="sp-badge">34</span></td></tr>
+    <tr class="sp-total"><td colspan="2"><strong>Total Sprint 2</strong></td><td><strong>108 SP</strong></td></tr>
+    </tbody></table>
+
+    <h4>5.1 Spécification Fonctionnelle</h4>
+    <div class="spec-grid">
+      <div class="spec-item"><h5>All PRs — Developer (Étapes 2 &amp; 6)</h5><p>6 onglets : New attention · Return · Approved · Waiting for reviewer · Drafts · Waiting for author. Badge compteur par onglet. Tri date/projet/sévérité.</p></div>
+      <div class="spec-item"><h5>Analyse statique complète (Étape 4 — branche gauche)</h5><p>Ruff · Semgrep · ESLint · SQLFluff · CleanCode. Filtrage strict lignes modifiées. UnifiedFinding. Déduplication. Pipeline unifié (GraphRAG en Release 2).</p></div>
+      <div class="spec-item"><h5>Code editor Developer (Étape 6)</h5><p>Monaco intégré. Vue split : code / findings. Commentaires inline. Citations règles KB (placeholder Sprint 4). Sévérité colorée CRITICAL/HIGH/MEDIUM/LOW.</p></div>
+      <div class="spec-item"><h5>Reviews Queue — Tech Lead (Étape 7)</h5><p>Liste analyses COMPLETED triée : bloquante > majeure > mineure > ancienneté. Item : projet, PR, classification IA, temps écoulé, reviewer assigné.</p></div>
+      <div class="spec-item"><h5>Workflow review Tech Lead (Étape 7)</h5><p>États : Commentaire en attente / En cours / Signal. Actions : Approuver (→ Approved) · Bloquer (→ bloquante, notif Developer) · Débloquer · Assigner.</p></div>
+      <div class="spec-item"><h5>Code editor Tech Lead</h5><p>Monaco lecture. Annotations findings IA. Section "Résultat / règle". Bouton "Modifier / analyser". Placeholder citations graphe (Sprint 5).</p></div>
+    </div>
+
+    <h4>5.2 Analyse des Cas d'Utilisation</h4>
+    <table class="uc-table"><thead><tr><th>Cas d'utilisation</th><th>Acteur principal</th><th>Acteurs secondaires</th></tr></thead>
+    <tbody>
+    <tr><td>Naviguer dans All PRs par état</td><td>Developer</td><td>Système IA</td></tr>
+    <tr><td>Voir les PRs "Return" avec commentaires TL</td><td>Developer</td><td>Tech Lead</td></tr>
+    <tr><td>Sauvegarder une PR en Draft</td><td>Developer</td><td>—</td></tr>
+    <tr><td>Exécuter l'analyse statique multi-outils</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Consulter le rapport (Résultat / règle)</td><td>Developer</td><td>—</td></tr>
+    <tr><td>Accéder à la Reviews Queue</td><td>Tech Lead</td><td>—</td></tr>
+    <tr><td>Approuver / Bloquer / Débloquer une review</td><td>Tech Lead</td><td>Developer</td></tr>
+    <tr><td>Assigner une review à un reviewer</td><td>Tech Lead</td><td>—</td></tr>
+    </tbody></table>
+
+    <h4>5.3 Conception des Cas d'Utilisation</h4>
+    <div class="cu-card">
+      <h5>CU-03 : Naviguer dans All PRs et agir sur une PR "Return"</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Developer authentifié, analyse COMPLETED avec décision "changes_requested"</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">All PRs > onglet Return → Code editor avec commentaires TL → correction → re-soumission → PR repasse à "Waiting for reviewer"</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">PR retirée de Return, ajoutée à Waiting for reviewer, Tech Lead notifié</span></div>
+    </div>
+    <div class="cu-card">
+      <h5>CU-04 : Tech Lead bloque une PR (Étape 7)</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Analyse dans Reviews Queue, Tech Lead authentifié reviewer</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">Queue → Code editor TL → lecture findings → action "Bloquer" → statut "Review bloquante" → PR Developer passe à "Waiting for author" → WebSocket + Slack</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">PR bloquée, Developer notifié sur tous les canaux</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SPRINT 3 -->
+<div class="sprint-card">
+  <div class="sprint-header s3">
+    <div>
+      <div class="sprint-title">Sprint 3 — Gestion de l'Administration, Analytics, Équipes, Notifications &amp; Mobile</div>
+      <div class="sprint-meta">
+        <span class="sprint-badge">⏱ 3 semaines</span>
+        <span class="sprint-badge">📊 199 SP</span>
+        <span class="sprint-badge">🔖 Release 1</span>
+        <span class="sprint-badge">📍 Étape 7 (complet) + Mobile</span>
+        <span class="sprint-badge">👥 Équipe 3–4 devs en parallèle</span>
+      </div>
+    </div>
+  </div>
+  <div class="sprint-body">
+    <h4>User Stories incluses</h4>
+    <table><thead><tr><th>ID</th><th>User Story</th><th>SP</th></tr></thead>
+    <tbody>
+    <tr><td>US-PROJ-03/05/06</td><td>Onboarding trigger + Organisations/équipes + Politiques branches</td><td><span class="sp-badge">21</span></td></tr>
+    <tr><td>US-TL-04/07/09 à 14</td><td>Nouveaux dispo + Modifier/analyser + Statut + Historique + Analyses + Templates + Paramètres + Liste analyses</td><td><span class="sp-badge">50</span></td></tr>
+    <tr><td>US-TEAM-01 à 04</td><td>Gérer membres + Assigner + Analytics équipe + Équipes Workspace</td><td><span class="sp-badge">19</span></td></tr>
+    <tr><td>US-AN-01 à 04</td><td>Statistiques Dev + Tous les analytics + Team analytics + Suivi ligne Admin</td><td><span class="sp-badge">29</span></td></tr>
+    <tr><td>US-NOTIF-01 à 04</td><td>WebSocket + email + Slack + push</td><td><span class="sp-badge">16</span></td></tr>
+    <tr><td>US-ADM-01 à 06</td><td>Admin complet (users + secrets + policies + audit + CI tokens + intégrations)</td><td><span class="sp-badge">34</span></td></tr>
+    <tr><td>US-REVAI-06/07/08</td><td>Jira + Rapports récents + PDF</td><td><span class="sp-badge">13</span></td></tr>
+    <tr><td>US-MOB-01 à 05</td><td>App mobile complète (auth + All PRs + résumé + push + santé TL)</td><td><span class="sp-badge">23</span></td></tr>
+    <tr class="sp-total"><td colspan="2"><strong>Total Sprint 3</strong></td><td><strong>199 SP</strong></td></tr>
+    </tbody></table>
+
+    <h4>5.1 Spécification Fonctionnelle</h4>
+    <div class="spec-grid">
+      <div class="spec-item"><h5>Admin Dashboard complet</h5><p>Métriques globales, suivi ligne par projet. CRUD orgs/équipes/membres. Gestion comptes/rôles. Éditeur Policies et rules (simulation + test). Intégrations : GitHub App, Jira API, Slack webhook, CI tokens.</p></div>
+      <div class="spec-item"><h5>Éditeur RAG (Admin)</h5><p>Parcourir, éditer, supprimer, re-indexer les documents KB. Visualisation connexions Rule → Code entities. Import drag &amp; drop PDF/Markdown. Réindexation manuelle.</p></div>
+      <div class="spec-item"><h5>Tech Lead — vue complète</h5><p>Statut reviews (temps réel). Historique (filtres date/projet/décision). Analyses reviews (taux approbation, SLA, précision IA). Templates CRUD. Paramètres (rigueur 1–5, seuil risque, assignation auto, SLA). Liste analyses globale.</p></div>
+      <div class="spec-item"><h5>Gestion équipes (Tech Lead)</h5><p>Teams : liste, membres, charge de travail. Gérer membres : ajouter/retirer/changer rôle. Analytics équipe : reviews/semaine, SLA compliance %, top findings par reviewer.</p></div>
+      <div class="spec-item"><h5>Notifications multi-canal</h5><p>WebSocket : changements d'état PR. Email SendGrid : findings critiques/bloquantes. Slack : review majeure/bloquante. Push navigateur + mobile : pywebpush → Firebase/APNS.</p></div>
+      <div class="spec-item"><h5>Application mobile (5 écrans)</h5><p>Login Clerk · All PRs (onglets état) · Résumé analyse (risk level, findings count) · Notifications · Santé plateforme (TL). Pull-to-refresh. Push via Firebase/APNS.</p></div>
+    </div>
+
+    <h4>5.2 Analyse des Cas d'Utilisation</h4>
+    <table class="uc-table"><thead><tr><th>Cas d'utilisation</th><th>Acteur principal</th><th>Acteurs secondaires</th></tr></thead>
+    <tbody>
+    <tr><td>Gérer utilisateurs et organisations</td><td>Admin</td><td>—</td></tr>
+    <tr><td>Configurer Policies et rules</td><td>Admin</td><td>Système IA</td></tr>
+    <tr><td>Éditer les documents RAG (Éditeur RAG)</td><td>Admin</td><td>Système IA</td></tr>
+    <tr><td>Gérer les Intégrations (GitHub/Jira/Slack)</td><td>Admin</td><td>GitHub / Jira / Slack</td></tr>
+    <tr><td>Configurer Paramètres de revue</td><td>Tech Lead</td><td>—</td></tr>
+    <tr><td>Consulter Analytics équipe</td><td>Tech Lead</td><td>—</td></tr>
+    <tr><td>Gérer les membres d'une équipe</td><td>Tech Lead</td><td>Developer</td></tr>
+    <tr><td>Consulter Statistiques personnelles</td><td>Developer</td><td>—</td></tr>
+    <tr><td>Recevoir notification push mobile</td><td>Developer</td><td>Système IA</td></tr>
+    <tr><td>Consulter All PRs sur mobile</td><td>Developer</td><td>—</td></tr>
+    </tbody></table>
+
+    <h4>5.3 Conception des Cas d'Utilisation</h4>
+    <div class="cu-card">
+      <h5>CU-05 : Configurer les Paramètres de revue (Tech Lead)</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Tech Lead authentifié, projets existants</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">Settings review → rigueur (1–5) → seuil risque bloquant (CRITICAL ≥ 2) → assignation auto (round-robin) → délai SLA (48h) → sauvegarde → appliqué aux prochaines analyses</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Paramètres actifs, analyses suivantes classifiées selon les nouveaux seuils</span></div>
+    </div>
+    <div class="cu-card">
+      <h5>CU-06 : Analytics équipe (Tech Lead)</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Équipe avec ≥ 2 reviewers actifs sur 7 jours</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">Teams → Analytics équipe → graphiques : reviews/semaine par membre, SLA compliance %, top findings types, taux approbation par reviewer</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Tech Lead identifie les déséquilibres de charge et les erreurs récurrentes</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ RELEASE 2 ═══ -->
+<div class="release-header r2">
+  <h2>🧠 Release 2 — Moteur d'Intelligence Artificielle GraphRAG (Neo4j)</h2>
+  <p><strong>Sprints 4 et 5</strong> · Étapes 1, 3 (complet), 4 (branche droite), 5, 6 (complet)</p>
+  <div class="goal">Activer le cœur IA : graphe Neo4j complet, indexation incrémentale, retrieval GraphRAG en 7 couches, génération ancrée avec guardrails, findings editor-ready, auto-fix et Insights Developer.</div>
+</div>
+
+<!-- SPRINT 4 -->
+<div class="sprint-card">
+  <div class="sprint-header s4">
+    <div>
+      <div class="sprint-title">Sprint 4 — Gestion du Graphe Neo4j, Indexation Complète &amp; Base de Connaissances</div>
+      <div class="sprint-meta">
+        <span class="sprint-badge">⏱ 3 semaines</span>
+        <span class="sprint-badge">📊 99 SP</span>
+        <span class="sprint-badge">🔖 Release 2</span>
+        <span class="sprint-badge">📍 Étape 1 (complet)</span>
+      </div>
+    </div>
+  </div>
+  <div class="sprint-body">
+    <h4>User Stories incluses</h4>
+    <table><thead><tr><th>ID</th><th>User Story</th><th>SP</th></tr></thead>
+    <tbody>
+    <tr><td>US-NEO-01</td><td>Schéma Neo4j (15 nœuds, 15 relations, indexes FTS, contraintes)</td><td><span class="sp-badge">13</span></td></tr>
+    <tr><td>US-NEO-02</td><td>Chunking AST-aware complet (Tree-sitter : fonction/classe/module)</td><td><span class="sp-badge">13</span></td></tr>
+    <tr><td>US-NEO-03</td><td>Embeddings natifs Neo4j (vector search ready)</td><td><span class="sp-badge">8</span></td></tr>
+    <tr><td>US-NEO-04</td><td>Graphe de dépendances (CALLS, IMPORTS, DEPENDS_ON, DEFINES)</td><td><span class="sp-badge">13</span></td></tr>
+    <tr><td>US-NEO-05</td><td>Historique AnalysisRun → HAS_HISTORY dans Neo4j</td><td><span class="sp-badge">8</span></td></tr>
+    <tr><td>US-ANA-05</td><td>Indexation incrémentale (re-chunk fichiers modifiés uniquement)</td><td><span class="sp-badge">13</span></td></tr>
+    <tr><td>US-KB-01/02/04/05/06</td><td>Import KB + indexation Neo4j + Éditeur RAG + règles appliquées + KB Workspace</td><td><span class="sp-badge">31</span></td></tr>
+    <tr class="sp-total"><td colspan="2"><strong>Total Sprint 4</strong></td><td><strong>99 SP</strong></td></tr>
+    </tbody></table>
+
+    <h4>5.1 Spécification Fonctionnelle</h4>
+    <div class="spec-grid">
+      <div class="spec-item"><h5>Schéma Neo4j production (Étape 1)</h5><p>Nœuds : Organization, Project, Repository, File, Module, Class, Function, Chunk, Rule, KnowledgeDocument, Ticket, DesignPattern, AnalysisRun, Comment, Suggestion. Relations : CONTAINS, BELONGS_TO, DEFINES, CALLS, IMPORTS, DEPENDS_ON, RELATED_TO, DERIVED_FROM, SUPPORTS, VIOLATES, TRIGGERS, GENERATED_FROM, HAS_HISTORY, HAS_RULE, BASED_ON. FTS indexes sur name/path/content. Contraintes d'unicité sur id.</p></div>
+      <div class="spec-item"><h5>Chunking AST-aware (Étape 1)</h5><p>Tree-sitter : Python, JS, TS, Go. Niveaux : fonction (P1) → classe (P2) → module (P3) → import group (P4). Métadonnées : file_path, line_start, line_end, symbol_name, chunk_type, repo_id, language, content_hash. Nœud Chunk dans Neo4j lié via CONTAINS.</p></div>
+      <div class="spec-item"><h5>Embeddings Neo4j + Indexation incrémentale</h5><p>Batch generation, propriété vectorielle sur Chunk et KnowledgeDocument. Index vectoriel ANN. Incrémental : delete Chunks obsolètes (content_hash) → re-parse → nouveaux Chunks → embeddings → upsert → relations locales uniquement.</p></div>
+      <div class="spec-item"><h5>KB dans Neo4j + Éditeur RAG Admin</h5><p>Import Markdown/PDF → chunking → embeddings → KnowledgeDocument nodes. Rules → Rule nodes → HAS_RULE. Éditeur RAG : CRUD documents, visualisation connexions, réindexation manuelle. Developer : vue lecture KB dans Workspace.</p></div>
+    </div>
+
+    <h4>5.2 Analyse des Cas d'Utilisation</h4>
+    <table class="uc-table"><thead><tr><th>Cas d'utilisation</th><th>Acteur principal</th><th>Acteurs secondaires</th></tr></thead>
+    <tbody>
+    <tr><td>Indexer un dépôt complet dans Neo4j</td><td>Système IA</td><td>Tech Lead</td></tr>
+    <tr><td>Chunker le code par AST (Tree-sitter)</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Générer et stocker embeddings Neo4j</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Construire le graphe de dépendances</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Mettre à jour Neo4j de façon incrémentale</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Importer des documents dans la KB</td><td>Tech Lead / Admin</td><td>Système IA</td></tr>
+    <tr><td>Éditer les documents RAG (Éditeur RAG)</td><td>Admin</td><td>Système IA</td></tr>
+    <tr><td>Consulter la KB dans le Workspace</td><td>Developer</td><td>—</td></tr>
+    </tbody></table>
+
+    <h4>5.3 Conception des Cas d'Utilisation</h4>
+    <div class="cu-card">
+      <h5>CU-07 : Indexer un dépôt complet (Étape 1)</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Projet créé, token GitHub valide, Neo4j opérationnel</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">POST /v1/projects/{id}/onboard → Celery onboard_repository → clone → Tree-sitter → Chunk nodes → embeddings batch → Neo4j (Org→Project→Repo→File→Module→Class→Function→Chunk) → CALLS/IMPORTS/DEPENDS_ON → KB HAS_RULE → ONBOARDING_COMPLETE</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Graphe Neo4j complet, KB connectée aux entités code</span></div>
+    </div>
+    <div class="cu-card">
+      <h5>CU-08 : Éditer un document RAG (Admin — Éditeur RAG)</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Admin authentifié, document existant dans Neo4j</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">Éditeur RAG → sélection document → modification → sauvegarde → re-chunking → re-embedding → upsert Neo4j → re-connexion HAS_RULE si règle modifiée</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Document KB mis à jour, futures analyses utilisent la nouvelle version</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SPRINT 5 -->
+<div class="sprint-card">
+  <div class="sprint-header s5">
+    <div>
+      <div class="sprint-title">Sprint 5 — Gestion du Retrieval GraphRAG, Génération Ancrée, Insights &amp; Revue Intelligente Complète</div>
+      <div class="sprint-meta">
+        <span class="sprint-badge">⏱ 3 semaines</span>
+        <span class="sprint-badge">📊 118 SP</span>
+        <span class="sprint-badge">🔖 Release 2</span>
+        <span class="sprint-badge">📍 Étapes 4 (branche droite), 5, 6 (complet)</span>
+      </div>
+    </div>
+  </div>
+  <div class="sprint-body">
+    <h4>User Stories incluses</h4>
+    <table><thead><tr><th>ID</th><th>User Story</th><th>SP</th></tr></thead>
+    <tbody>
+    <tr><td>US-KB-03</td><td>KB consultée en priorité lors de la génération</td><td><span class="sp-badge">8</span></td></tr>
+    <tr><td>US-RAG-01 à 08</td><td>Pipeline GraphRAG complet (FTS + traversée + sous-graphe + assemblage + LLM + guardrails + editor-ready + auto-fix)</td><td><span class="sp-badge">79</span></td></tr>
+    <tr><td>US-REVAI-01/02</td><td>Rapport structuré complet + classification majeure/mineure/bloquante</td><td><span class="sp-badge">18</span></td></tr>
+    <tr><td>US-REVAI-05</td><td>Insights Developer (patterns récurrents, recommandations IA)</td><td><span class="sp-badge">8</span></td></tr>
+    <tr><td>US-TL-07</td><td>Tech Lead accède à auto-fix (Modifier / analyser)</td><td><span class="sp-badge">5</span></td></tr>
+    <tr class="sp-total"><td colspan="2"><strong>Total Sprint 5</strong></td><td><strong>118 SP</strong></td></tr>
+    </tbody></table>
+
+    <h4>5.1 Spécification Fonctionnelle</h4>
+    <div class="spec-grid">
+      <div class="spec-item"><h5>Pipeline GraphRAG en 7 couches (Étape 4 — branche droite)</h5><p>(1) FTS symbolique Neo4j sur entités du diff · (2) Traversée CALLS/IMPORTS/DEPENDS_ON/HAS_RULE · (3) Multi-hop depth 2–3 · (4) Extraction sous-graphe (max 50 nœuds) · (5) KB Rule lookup (VIOLATES/HAS_RULE) · (6) Reranking cross-encoder optionnel · (7) Assembly : KB rules (P1) → graphe (P2) → chunks repo (P3).</p></div>
+      <div class="spec-item"><h5>Génération ancrée provider-agnostique</h5><p>Interface LLMProvider : OllamaProvider / ClaudeProvider / OpenAIProvider. Config via LLM_PROVIDER env var. Même StructuredReviewOutput pour tous. Réparation JSON auto. Guardrails : ≥1 evidence_ref (Neo4j node ID ou KB doc ID) par finding obligatoire.</p></div>
+      <div class="spec-item"><h5>Commentaires editor-ready + Auto-fix (Étape 6)</h5><p>Format : {file_path, line_start, line_end, severity, summary, why_it_matters, evidence_refs, rule_refs, auto_fix}. Affichés dans Code editor Dev et TL (remplacement des placeholders Sprint 2). Auto-fix : diff-like actionable ou null.</p></div>
+      <div class="spec-item"><h5>Rapport structuré GraphRAG + Classification (Étape 5)</h5><p>Résumé ancré KB+graphe. Risque = agrégation statique+GraphRAG. Tests basés sur CALLS identifiées. Merge readiness = risque × couverture règles KB. Classification auto bloquante/majeure/mineure → Reviews Queue TL.</p></div>
+      <div class="spec-item"><h5>Insights Developer</h5><p>Analyse AnalysisRun Neo4j (30 derniers jours). Top 5 rules violées par symbole/fichier. Recommandations personnalisées basées sur VIOLATES. Graphique tendance dans page "Insights" du dashboard.</p></div>
+    </div>
+
+    <h4>5.2 Analyse des Cas d'Utilisation</h4>
+    <table class="uc-table"><thead><tr><th>Cas d'utilisation</th><th>Acteur principal</th><th>Acteurs secondaires</th></tr></thead>
+    <tbody>
+    <tr><td>Effectuer la recherche symbolique FTS Neo4j</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Traverser le graphe multi-hop</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Assembler le contexte LLM ordonné (KB→graphe→repo)</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Générer findings via LLM (Ollama/Claude/OpenAI)</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Valider les guardrails anti-hallucination</td><td>Système IA</td><td>—</td></tr>
+    <tr><td>Afficher commentaires editor-ready dans Code editor</td><td>Developer / Tech Lead</td><td>—</td></tr>
+    <tr><td>Accéder à l'auto-fix (Modifier / analyser)</td><td>Tech Lead</td><td>Système IA</td></tr>
+    <tr><td>Consulter les Insights personnalisés</td><td>Developer</td><td>Système IA</td></tr>
+    <tr><td>Voir classification (majeure/mineure/bloquante) dans Queue</td><td>Tech Lead</td><td>—</td></tr>
+    </tbody></table>
+
+    <h4>5.3 Conception des Cas d'Utilisation</h4>
+    <div class="cu-card">
+      <h5>CU-09 : Pipeline GraphRAG + génération editor-ready (Étapes 4–6)</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Neo4j indexé, diff parsé, KB indexée, LLM_PROVIDER configuré</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">(1) FTS symbols du diff → entités Neo4j (2) Traversée CALLS/IMPORTS depth 2 (3) Extraction sous-graphe (4) HAS_RULE lookup (5) Assembly (KB P1→graphe P2→chunks P3) (6) LLM prompt → JSON findings (7) Guardrails : ≥1 evidence_ref sinon rejet (8) Persistence Comment nodes Neo4j</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Findings editor-ready en DB, Code editor Dev et TL mis à jour avec citations</span></div>
+    </div>
+    <div class="cu-card">
+      <h5>CU-10 : Consulter les Insights Developer</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">≥ 5 AnalysisRun dans Neo4j pour ce Developer</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">Dashboard → Insights → MATCH (ar:AnalysisRun)-[:HAS_COMMENT]->(c:Comment)-[:VIOLATES]->(r:Rule) → top 5 rules violées → recommandations personnalisées → graphique tendance</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Developer comprend ses patterns d'erreurs récurrents</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ RELEASE 3 ═══ -->
+<div class="release-header r3">
+  <h2>⚙️ Release 3 — DevOps, CI/CD Automatisé &amp; Déploiement Cloud VPS</h2>
+  <p><strong>Sprint 6</strong> · Infrastructure de production</p>
+  <div class="goal">Conteneuriser la plateforme complète (incluant Neo4j), déployer en production sur VPS avec HTTPS automatique, automatiser le CI dans les projets analysés, monitoring complet Prometheus/Grafana.</div>
+</div>
+
+<!-- SPRINT 6 -->
+<div class="sprint-card">
+  <div class="sprint-header s6">
+    <div>
+      <div class="sprint-title">Sprint 6 — Gestion du Déploiement Cloud VPS, Automatisation CI/CD &amp; Monitoring</div>
+      <div class="sprint-meta">
+        <span class="sprint-badge">⏱ 3 semaines</span>
+        <span class="sprint-badge">📊 69 SP</span>
+        <span class="sprint-badge">🔖 Release 3</span>
+        <span class="sprint-badge">📍 Infrastructure complète</span>
+      </div>
+    </div>
+  </div>
+  <div class="sprint-body">
+    <h4>User Stories incluses</h4>
+    <table><thead><tr><th>ID</th><th>User Story</th><th>SP</th></tr></thead>
+    <tbody>
+    <tr><td>US-DO-01/02</td><td>make up (Neo4j inclus) + images Docker optimisées</td><td><span class="sp-badge">16</span></td></tr>
+    <tr><td>US-DO-03/04</td><td>Pipeline GitHub Actions + injection auto .github/workflows/</td><td><span class="sp-badge">16</span></td></tr>
+    <tr><td>US-ADM-05</td><td>Génération et révocation tokens CI</td><td><span class="sp-badge">3</span></td></tr>
+    <tr><td>US-DO-05</td><td>Déploiement VPS : Nginx + SSL Certbot + Neo4j persistant</td><td><span class="sp-badge">8</span></td></tr>
+    <tr><td>US-DO-06</td><td>Monitoring : Prometheus + 5 dashboards Grafana + 9 alertes</td><td><span class="sp-badge">13</span></td></tr>
+    <tr><td>US-REVAI-06</td><td>Liaison findings ↔ Jira finalisée</td><td><span class="sp-badge">5</span></td></tr>
+    <tr><td>US-AN-04</td><td>Suivi ligne par projet (Admin) avec données GraphRAG</td><td><span class="sp-badge">8</span></td></tr>
+    <tr class="sp-total"><td colspan="2"><strong>Total Sprint 6</strong></td><td><strong>69 SP</strong></td></tr>
+    </tbody></table>
+
+    <h4>5.1 Spécification Fonctionnelle</h4>
+    <div class="spec-grid">
+      <div class="spec-item"><h5>Conteneurisation complète + Neo4j</h5><p>Dockerfile backend : python:3.11-slim + Node.js/Ruby/Go/Semgrep/Ruff. Dashboard : multi-stage. Docker Compose : 16 services incluant Neo4j (:7474, :7687). Makefile : make up / make infra-core-up / make neo4j-shell.</p></div>
+      <div class="spec-item"><h5>Pipeline CI/CD plateforme (GitHub Actions)</h5><p>Path-filter par service. Ruff + pytest. Docker multi-platform (amd64+arm64). Push GHCR. Scan : CodeQL · Trivy (CRITICAL/HIGH) · TruffleHog · pip-audit.</p></div>
+      <div class="spec-item"><h5>Injection CI dans les projets analysés</h5><p>Génération token Fernet par projet. github_client.create_file('.github/workflows/ai-code-review.yml'). Trigger on: [pull_request] → POST /v1/analyses. PR Developer passe à "Waiting for reviewer". Révocation sur suppression projet.</p></div>
+      <div class="spec-item"><h5>Déploiement VPS + HTTPS</h5><p>Docker Compose production (infra/vps/). Nginx : api.domaine.net → :8000, app.domaine.net → :3000. Certbot Let's Encrypt. Neo4j volume Docker persistant. Migrations Alembic auto au démarrage.</p></div>
+      <div class="spec-item"><h5>Monitoring complet</h5><p>Prometheus : 7 scrape targets (API, Celery Pushgateway, Redis/PostgreSQL/Neo4j exporters, Flower). 5 dashboards Grafana préconfigurés. 9 alertes : HighAnalysisFailureRate · AnalysisPipelineStalled · LLMHighLatency · HighAPIErrorRate · RedisHighMemoryUsage · Neo4jQuerySlowness · etc.</p></div>
+    </div>
+
+    <h4>5.2 Analyse des Cas d'Utilisation</h4>
+    <table class="uc-table"><thead><tr><th>Cas d'utilisation</th><th>Acteur principal</th><th>Acteurs secondaires</th></tr></thead>
+    <tbody>
+    <tr><td>Démarrer la plateforme avec Neo4j (make up)</td><td>Developer</td><td>—</td></tr>
+    <tr><td>Exécuter le pipeline CI/CD (GitHub Actions)</td><td>Système IA</td><td>Admin</td></tr>
+    <tr><td>Générer un token CI</td><td>Admin</td><td>—</td></tr>
+    <tr><td>Injecter le workflow CI dans un dépôt</td><td>Système IA</td><td>Admin / GitHub</td></tr>
+    <tr><td>Déployer sur VPS avec Neo4j</td><td>Admin</td><td>—</td></tr>
+    <tr><td>Configurer Nginx + HTTPS Certbot</td><td>Admin</td><td>—</td></tr>
+    <tr><td>Consulter les dashboards Grafana</td><td>Tech Lead / Admin</td><td>—</td></tr>
+    <tr><td>Recevoir une alerte Prometheus</td><td>Admin</td><td>—</td></tr>
+    </tbody></table>
+
+    <h4>5.3 Conception des Cas d'Utilisation</h4>
+    <div class="cu-card">
+      <h5>CU-11 : Injecter le workflow CI et déclencher une analyse automatique</h5>
+      <div class="cu-row"><span class="cu-label">Précondition</span><span class="cu-val">Projet enregistré, token CI généré, GitHub App installée sur le dépôt</span></div>
+      <div class="cu-row"><span class="cu-label">Scénario</span><span class="cu-val">auto_analysis=true → create_or_update_file('.github/workflows/ai-code-review.yml') → Developer ouvre PR sur GitHub → GH Actions trigger → POST /v1/analyses?ci_token={token} → pipeline complet (statique + GraphRAG) → findings publiés sur PR → PR passe à "Waiting for reviewer" dans All PRs</span></div>
+      <div class="cu-row"><span class="cu-label">Postcondition</span><span class="cu-val">Cycle complet automatique sans intervention humaine après l'enregistrement initial</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ SUMMARY TABLE ══ -->
+<div class="section-header">
+  <h2>Tableau Récapitulatif Final</h2>
+  <p>Vue consolidée des 6 sprints, 3 releases, 662 Story Points</p>
+</div>
+
+<table class="summary-table">
+  <thead><tr><th>Sprint</th><th>Nom</th><th>R</th><th>SP</th><th>Étapes</th><th>Interfaces livrées</th></tr></thead>
+  <tbody>
+  <tr class="r1"><td><strong>S1</strong></td><td>Gestion de l'Authentification, Workspace Developer &amp; Pipeline de Base</td><td>R1</td><td><strong>69</strong></td><td>0, 2, 3 ✦</td><td>Auth + All PRs (base) + Workspace + Dashboard Dev</td></tr>
+  <tr class="r1"><td><strong>S2</strong></td><td>Gestion des PRs, Analyse Statique Complète &amp; Workflow de Review Tech Lead</td><td>R1</td><td><strong>108</strong></td><td>3 ✓, 6 ✦, 7</td><td>All PRs complet + Code editor + Reviews Queue + Actions TL</td></tr>
+  <tr class="r1"><td><strong>S3</strong></td><td>Gestion de l'Administration, Analytics, Équipes, Notifications &amp; Mobile</td><td>R1</td><td><strong>199</strong></td><td>7 ✓ + Mobile</td><td>Admin complet + Éditeur RAG + Analytics + Teams + Notifs + Mobile</td></tr>
+  <tr class="r2"><td><strong>S4</strong></td><td>Gestion du Graphe Neo4j, Indexation Complète &amp; Base de Connaissances</td><td>R2</td><td><strong>99</strong></td><td>1 ✓</td><td>Neo4j schéma + Chunking AST + KB indexée + Éditeur RAG enrichi</td></tr>
+  <tr class="r2"><td><strong>S5</strong></td><td>Gestion du Retrieval GraphRAG, Génération Ancrée &amp; Revue Intelligente</td><td>R2</td><td><strong>118</strong></td><td>4, 5, 6 ✓</td><td>GraphRAG complet + Insights + Auto-fix + Résultat/règle enrichi</td></tr>
+  <tr class="r3"><td><strong>S6</strong></td><td>Gestion du Déploiement Cloud VPS, CI/CD &amp; Monitoring</td><td>R3</td><td><strong>69</strong></td><td>Infrastructure</td><td>VPS + HTTPS + CI injection + Prometheus/Grafana</td></tr>
+  <tr style="background:#0F172A;color:white;font-weight:700;"><td colspan="3">TOTAL</td><td>662 SP</td><td>Étapes 0→7</td><td>Plateforme complète en production</td></tr>
+  </tbody>
+</table>
+
+<div class="doc-footer">
+  <strong>AI Code Review Platform — Planification Agile Complète</strong><br>
+  GraphRAG / Neo4j · 6 Sprints · 3 Releases · 662 Story Points · 18 Semaines<br>
+  Rapport PFE 2025–2026 · Version finale enrichie
+</div>
+
+</div><!-- .page -->
+</body>
+</html>
