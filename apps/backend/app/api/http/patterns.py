@@ -15,10 +15,10 @@ import logging
 from typing import List, Dict, Optional, Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.api.middleware.auth import AuthenticatedRequest
+from app.api.middleware.auth import AuthenticatedPrincipal, require_auth
 from app.core.design_patterns import (
     PatternExtractor,
     PatternNeo4jRepository,
@@ -122,9 +122,9 @@ class ImportProfileResponse(BaseModel):
 
 @router.post("/extract", response_model=ExtractPatternsResponse)
 async def extract_patterns(
-    request: AuthenticatedRequest,
     body: ExtractPatternsRequest,
     background_tasks: BackgroundTasks,
+    _principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """
     Extract design patterns from a repository.
@@ -181,8 +181,8 @@ async def extract_patterns(
 
 @router.post("/analyze-pr", response_model=AnalyzePRResponse)
 async def analyze_pr(
-    request: AuthenticatedRequest,
     body: AnalyzePRRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """
     Analyze a Pull Request against extracted patterns.
@@ -265,8 +265,8 @@ async def analyze_pr(
 
 @router.get("/repository/{repo_name}", response_model=List[PatternResponse])
 async def get_repository_patterns(
-    request: AuthenticatedRequest,
     repo_name: str,
+    _principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """
     Get all patterns for a repository.
@@ -291,8 +291,8 @@ async def get_repository_patterns(
 
 @router.get("/statistics", response_model=PatternStatisticsResponse)
 async def get_pattern_statistics(
-    request: AuthenticatedRequest,
     repository_name: Optional[str] = Query(None, description="Filter by repository"),
+    _principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """
     Get pattern statistics.
@@ -314,8 +314,8 @@ async def get_pattern_statistics(
 
 @router.get("/violations/analysis/{analysis_id}", response_model=List[ViolationResponse])
 async def get_analysis_violations(
-    request: AuthenticatedRequest,
     analysis_id: str,
+    _principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """
     Get pattern violations for an analysis.
@@ -343,8 +343,8 @@ async def get_analysis_violations(
 
 @router.get("/most-violated", response_model=List[Dict[str, Any]])
 async def get_most_violated_patterns(
-    request: AuthenticatedRequest,
     limit: int = Query(10, ge=1, le=50, description="Number of patterns to return"),
+    _principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """
     Get patterns that are most frequently violated.
@@ -366,9 +366,9 @@ async def get_most_violated_patterns(
 
 @router.post("/import-profile", response_model=ImportProfileResponse)
 async def import_github_profile(
-    request: AuthenticatedRequest,
     body: ImportProfileRequest,
     background_tasks: BackgroundTasks,
+    _principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """
     Import all repositories from a GitHub profile.

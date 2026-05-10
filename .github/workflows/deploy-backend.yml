@@ -70,7 +70,7 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           script: |
             cd /opt/ai-review/backend
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-api:latest
-            docker compose up -d --force-recreate
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-api:latest
+            sudo docker compose up -d --force-recreate
             sleep 30
             curl -sf http://127.0.0.1:8000/healthz
