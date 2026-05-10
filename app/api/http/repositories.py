@@ -699,7 +699,7 @@ async def import_repository_full(
         try:
             rbac_repo.assign_project_role(
                 user_id=principal.user_id,
-                project_id=repo_id,
+                project_id=project_id,
                 role_code="admin",
                 assigned_by=principal.user_id,
                 notes="Project creator via GitHub import",

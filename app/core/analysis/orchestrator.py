@@ -20,6 +20,9 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from analysis.langGraph.models import LangGraphAnalysisRequest
+from analysis.langGraph.pipeline import run_langgraph_analysis
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,12 +88,13 @@ class AnalysisOrchestrator:
     def __init__(
         self,
         *,
-        context_service: Any,  # Will be typed after service implementation
-        knowledge_base_service: Any,
-        retrieval_service: Any,
-        generation_service: Any,
-        static_analysis_service: Any,
-        history_service: Any,
+        context_service: Any | None = None,  # Will be typed after service implementation
+        knowledge_base_service: Any | None = None,
+        retrieval_service: Any | None = None,
+        generation_service: Any | None = None,
+        static_analysis_service: Any | None = None,
+        history_service: Any | None = None,
+        graph_manager: Any | None = None,
     ) -> None:
         self._context_service = context_service
         self._kb_service = knowledge_base_service
@@ -98,6 +102,7 @@ class AnalysisOrchestrator:
         self._generation_service = generation_service
         self._static_service = static_analysis_service
         self._history_service = history_service
+        self._graph_manager = graph_manager
     
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
         """
@@ -282,3 +287,104 @@ class AnalysisOrchestrator:
             comments.append(comment)
         
         return comments
+
+    async def run(
+        self,
+        *,
+        repository_path: str,
+        repository_id: str,
+        organization_id: str,
+        project_id: str,
+        diff_content: str,
+        analysis_id: str,
+        incremental: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Compatibility entrypoint used by Celery task.
+
+        This path executes the production LangGraph pipeline and returns
+        normalized findings with explicit sources and confidence.
+        """
+        del organization_id, project_id, incremental  # Reserved for later richer orchestration.
+        started = time.perf_counter()
+
+        changed_files = self._extract_changed_files(diff_content)
+        request = LangGraphAnalysisRequest(
+            analysis_id=analysis_id,
+            repo_id=repository_id,
+            repo_path=repository_path,
+            diff_text=diff_content,
+            changed_files=changed_files,
+            metadata={"source": "analysis_orchestrator"},
+            # Context IDs for gateway observability (enables full trace logging)
+            user_id=None,  # TODO: Extract from analysis metadata or auth context
+            project_id=project_id,
+            organization_id=organization_id,
+        )
+
+        result = await run_langgraph_analysis(request)
+
+        graph_rag_findings: list[dict[str, Any]] = []
+        for finding in result.llm_output.findings:
+            graph_rag_findings.append(
+                {
+                    "source": "llm_langgraph",
+                    "severity": finding.severity,
+                    "category": finding.category,
+                    "message": finding.message,
+                    "suggestion": finding.suggestion,
+                    "confidence": finding.confidence,
+                    "file_path": finding.file_path,
+                    "line_start": finding.line_start,
+                    "line_end": finding.line_end,
+                    "references": list(finding.references),
+                    "auto_fix": finding.auto_fix,
+                    "evidence": {
+                        "retrieval_mode": result.retrieval.retrieval_mode,
+                        "vector_hits": result.retrieval.vector_hits,
+                        "graph_hits": result.retrieval.graph_hits,
+                        "kb_hits": len(
+                            [
+                                ref
+                                for ref in result.retrieval.references
+                                if (ref.source or "").lower().startswith("kb")
+                            ]
+                        ),
+                    },
+                }
+            )
+
+        severity_counts = {"BLOCKER": 0, "WARN": 0, "INFO": 0}
+        for item in graph_rag_findings:
+            severity = str(item.get("severity", "WARN")).upper()
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        return {
+            "status": "completed" if result.llm_output.status != "failed" else "partial",
+            "duration_ms": duration_ms,
+            "total_findings": len(graph_rag_findings),
+            "critical_findings": severity_counts["BLOCKER"],
+            "high_findings": severity_counts["WARN"],
+            "medium_findings": 0,
+            "low_findings": severity_counts["INFO"],
+            "graph_rag_findings": graph_rag_findings,
+            "retrieval_trace": result.retrieval.to_dict(),
+            "generation_trace": result.llm_output.to_dict(),
+            "errors": list(result.errors),
+        }
+
+    def _extract_changed_files(self, diff_text: str) -> list[str]:
+        changed: list[str] = []
+        for line in diff_text.splitlines():
+            if not line.startswith("+++ "):
+                continue
+            path = line[4:].strip()
+            if path.startswith("b/"):
+                path = path[2:]
+            if path == "/dev/null" or not path:
+                continue
+            if path not in changed:
+                changed.append(path)
+        return changed

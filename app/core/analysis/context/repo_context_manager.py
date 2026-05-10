@@ -16,15 +16,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from app.core.analysis.context.chunking import CodeChunker, CodeChunk
 from app.core.analysis.context.embeddings import EmbeddingGenerator
 from app.core.analysis.graph.builder import GraphBuilder
 from app.core.analysis.graph.manager import GraphManager
-from app.core.analysis.graph.schema import NodeType, RelationType
 from app.integrations.graph_database.neo4j_client import get_neo4j_client
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 
@@ -128,11 +127,13 @@ class RepoContextManager:
         started = time.perf_counter()
         
         try:
-            # Check if repository exists in graph
-            repo_node = self._graph_manager.find_node(
-                NodeType.REPOSITORY,
-                {"id": repository_id}
+            # Check if repository already exists in Neo4j canonical schema.
+            existing_repo_rows = await asyncio.to_thread(
+                self._neo4j.execute_query,
+                "MATCH (r:Repository {repo_id: $repo_id}) RETURN r LIMIT 1",
+                {"repo_id": repository_id},
             )
+            repo_node = existing_repo_rows[0]["r"] if existing_repo_rows else None
             
             if force_full:
                 logger.info(f"[{repository_id}] Forced full indexing")
@@ -168,7 +169,7 @@ class RepoContextManager:
                 result = IndexingResult(
                     success=True,
                     repository_id=repository_id,
-                    indexed_commit=repo_node.get("indexed_commit"),
+                    indexed_commit=repo_node.get("indexed_commit") if isinstance(repo_node, dict) else None,
                     mode="skipped",
                     files_seen=0,
                     files_indexed=0,
@@ -180,7 +181,7 @@ class RepoContextManager:
                 )
             
             duration_ms = int((time.perf_counter() - started) * 1000)
-            return result._replace(duration_ms=duration_ms)
+            return replace(result, duration_ms=duration_ms)
             
         except Exception as exc:
             logger.error(f"[{repository_id}] Indexing failed: {exc}")
@@ -222,12 +223,18 @@ class RepoContextManager:
         7. Extract relationships (calls, imports)
         8. Update repository profile
         """
-        from pathlib import Path
-        
         repo_root = Path(repo_path)
         if not repo_root.exists():
             raise ValueError(f"Repository path does not exist: {repo_path}")
         
+        # Ensure repository root node exists in canonical Neo4j schema.
+        await asyncio.to_thread(
+            self._neo4j.upsert_repository,
+            repo_id=repository_id,
+            repo_path=repo_path,
+            indexed_commit=commit_sha,
+        )
+
         # Scan files
         code_files = self._scan_repository(repo_root)
         logger.info(f"[{repository_id}] Found {len(code_files)} code files")
@@ -297,8 +304,6 @@ class RepoContextManager:
         4. Update Neo4j
         5. Update graph nodes/edges
         """
-        from pathlib import Path
-        
         repo_root = Path(repo_path)
         
         # Re-chunk changed files
@@ -342,10 +347,8 @@ class RepoContextManager:
             duration_ms=0,
         )
     
-    def _scan_repository(self, repo_root) -> list:
+    def _scan_repository(self, repo_root: Path) -> list[Path]:
         """Scan repository for code files."""
-        from pathlib import Path
-        
         code_extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java"}
         exclude_dirs = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build"}
         
@@ -364,22 +367,40 @@ class RepoContextManager:
         embeddings: list[list[float]],
     ) -> None:
         """Store chunks with embeddings in Neo4j."""
-        neo4j_chunks = []
+        neo4j_chunks: list[dict[str, Any]] = []
+        file_languages: dict[str, str] = {}
         for chunk, embedding in zip(chunks, embeddings):
+            file_languages.setdefault(chunk.file_path, str(chunk.language))
             neo4j_chunks.append({
-                "chunk_id": chunk.chunk_id,
+                "uid": chunk.id,
                 "repo_id": repository_id,
-                "file_path": chunk.file_path,
+                "path": chunk.file_path,
+                "chunk_index": chunk.metadata.get("chunk_index", 0),
+                "language": str(chunk.language),
+                "file_type": Path(chunk.file_path).suffix.lstrip(".") or "code",
+                "chunk_type": chunk.chunk_type.value if hasattr(chunk.chunk_type, "value") else str(chunk.chunk_type),
                 "content": chunk.content,
-                "symbol_name": getattr(chunk, "symbol_name", None),
-                "symbol_type": getattr(chunk, "symbol_type", None),
-                "language": getattr(chunk, "language", None),
-                "line_start": getattr(chunk, "line_start", None),
-                "line_end": getattr(chunk, "line_end", None),
+                "symbol_name": chunk.symbol_name,
+                "start_line": chunk.line_start,
+                "end_line": chunk.line_end,
+                "indexed_commit": chunk.metadata.get("indexed_commit"),
+                "token_count": len(chunk.content.split()),
                 "embedding": embedding,
             })
-        if neo4j_chunks:
-            await asyncio.to_thread(self._neo4j.batch_upsert_chunks, neo4j_chunks)
+        if not neo4j_chunks:
+            return
+
+        # File nodes must exist before chunk->file links.
+        for file_path, language in file_languages.items():
+            await asyncio.to_thread(
+                self._neo4j.upsert_file,
+                repo_id=repository_id,
+                path=file_path,
+                language=language,
+                file_type=Path(file_path).suffix.lstrip(".") or "code",
+            )
+
+        await asyncio.to_thread(self._neo4j.batch_upsert_chunks, neo4j_chunks)
 
     async def _update_chunks_in_neo4j(
         self,
@@ -390,7 +411,11 @@ class RepoContextManager:
     ) -> None:
         """Update Neo4j: delete old chunks for changed files, insert new ones."""
         for file_path in changed_files:
-            await asyncio.to_thread(self._neo4j.delete_file_chunks, repository_id, file_path)
+            await asyncio.to_thread(
+                self._neo4j.delete_file_chunks,
+                repo_id=repository_id,
+                path=file_path,
+            )
         await self._store_chunks_in_neo4j(repository_id, chunks, embeddings)
     
     async def _build_graph(

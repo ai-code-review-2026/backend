@@ -191,6 +191,10 @@ class LangGraphAnalysisRequest:
     head_ref: str = "HEAD"
     metadata: dict[str, Any] = field(default_factory=dict)
     filters: RetrievalFilters = field(default_factory=RetrievalFilters)
+    # Context IDs for gateway observability (optional, enables full trace logging)
+    user_id: str | None = None
+    project_id: str | None = None
+    organization_id: str | None = None
 
     def cache_key(self) -> str:
         diff_hash = self.metadata.get("diff_hash")
@@ -211,6 +215,9 @@ class LangGraphAnalysisRequest:
             "head_ref": self.head_ref,
             "metadata": dict(self.metadata),
             "filters": self.filters.to_dict(),
+            "user_id": self.user_id,
+            "project_id": self.project_id,
+            "organization_id": self.organization_id,
         }
 
 

@@ -13,8 +13,16 @@ class LLMOrchestrator:
         *,
         llm_service: RagGraphLLMService | None = None,
         post_processor: LLMPostProcessor | None = None,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        analysis_id: str | None = None,
     ) -> None:
-        self._llm_service = llm_service or RagGraphLLMService()
+        self._llm_service = llm_service or RagGraphLLMService(
+            user_id=user_id,
+            project_id=project_id,
+            analysis_id=analysis_id,
+            use_gateway=True,  # Enable gateway by default for observability
+        )
         self._post_processor = post_processor or LLMPostProcessor()
 
     async def generate_findings(

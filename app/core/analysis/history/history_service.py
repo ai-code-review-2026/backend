@@ -201,10 +201,10 @@ class AnalysisHistoryService:
             "previous_run_id": str(previous_run_id) if previous_run_id else None,
         }
         
-        await self.graph_manager.upsert_node("AnalysisRun", run_node)
+        await self.graph_manager.upsert_node_async("AnalysisRun", run_node)
         
         # Link to repository
-        await self.graph_manager.upsert_relationship(
+        await self.graph_manager.upsert_relationship_async(
             from_label="Repository",
             from_id=str(repository_id),
             to_label="AnalysisRun",
@@ -215,7 +215,7 @@ class AnalysisHistoryService:
         
         # Link to previous run
         if previous_run_id:
-            await self.graph_manager.upsert_relationship(
+            await self.graph_manager.upsert_relationship_async(
                 from_label="AnalysisRun",
                 from_id=str(run_id),
                 to_label="AnalysisRun",
@@ -247,7 +247,7 @@ class AnalysisHistoryService:
         now = datetime.now(timezone.utc)
         
         # Get run start time to calculate duration
-        run_data = await self.graph_manager.get_node("AnalysisRun", str(run_id))
+        run_data = await self.graph_manager.get_node_async("AnalysisRun", str(run_id))
         if run_data:
             started_at = datetime.fromisoformat(run_data["started_at"])
             execution_time = (now - started_at).total_seconds()
@@ -274,7 +274,7 @@ class AnalysisHistoryService:
             "execution_time_seconds": metrics.execution_time_seconds,
         }
         
-        await self.graph_manager.update_node("AnalysisRun", str(run_id), update_props)
+        await self.graph_manager.update_node_async("AnalysisRun", str(run_id), update_props)
         
         logger.info(f"Analysis run {run_id} completed: {metrics.total_findings} findings")
     
@@ -305,10 +305,10 @@ class AnalysisHistoryService:
             "detected_at": datetime.now(timezone.utc).isoformat(),
         }
         
-        await self.graph_manager.upsert_node("Finding", finding_node)
+        await self.graph_manager.upsert_node_async("Finding", finding_node)
         
         # Link to analysis run
-        await self.graph_manager.upsert_relationship(
+        await self.graph_manager.upsert_relationship_async(
             from_label="AnalysisRun",
             from_id=str(run_id),
             to_label="Finding",
@@ -339,7 +339,7 @@ class AnalysisHistoryService:
         MATCH (current:AnalysisRun {id: $run_id})-[:PREVIOUS]->(previous:AnalysisRun)
         RETURN previous.id as previous_id
         """
-        result = await self.graph_manager.query(query, {"run_id": str(run_id)})
+        result = await self.graph_manager.query_async(query, {"run_id": str(run_id)})
         
         if not result:
             logger.info("No previous run found, all findings are new")
@@ -373,7 +373,7 @@ class AnalysisHistoryService:
                 
                 # Create SAME_AS relationship
                 prev_finding = previous_map[fingerprint]
-                await self.graph_manager.upsert_relationship(
+                await self.graph_manager.upsert_relationship_async(
                     from_label="Finding",
                     from_id=finding["id"],
                     to_label="Finding",
@@ -387,7 +387,7 @@ class AnalysisHistoryService:
                 fixed_findings.append(finding)
                 
                 # Mark as fixed
-                await self.graph_manager.upsert_relationship(
+                await self.graph_manager.upsert_relationship_async(
                     from_label="Finding",
                     from_id=finding["id"],
                     to_label="AnalysisRun",
@@ -445,7 +445,7 @@ class AnalysisHistoryService:
         RETURN f
         """
         
-        results = await self.graph_manager.query(query, {"run_id": str(run_id)})
+        results = await self.graph_manager.query_async(query, {"run_id": str(run_id)})
         return [row["f"] for row in results]
     
     async def _get_latest_run(self, repository_id: UUID) -> Optional[dict[str, Any]]:
@@ -457,7 +457,7 @@ class AnalysisHistoryService:
         LIMIT 1
         """
         
-        results = await self.graph_manager.query(
+        results = await self.graph_manager.query_async(
             query,
             {"repo_id": str(repository_id)}
         )
@@ -490,7 +490,7 @@ class AnalysisHistoryService:
         ORDER BY run.started_at ASC
         """
         
-        results = await self.graph_manager.query(
+        results = await self.graph_manager.query_async(
             query,
             {
                 "repo_id": str(repository_id),
@@ -526,7 +526,7 @@ class AnalysisHistoryService:
     
     async def get_run_by_id(self, run_id: UUID) -> Optional[AnalysisRun]:
         """Get an analysis run by ID."""
-        run_data = await self.graph_manager.get_node("AnalysisRun", str(run_id))
+        run_data = await self.graph_manager.get_node_async("AnalysisRun", str(run_id))
         
         if not run_data:
             return None
