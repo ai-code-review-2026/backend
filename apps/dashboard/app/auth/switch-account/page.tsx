@@ -1,9 +1,8 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { useAuth, useClerk } from "@clerk/nextjs"
-import { useRouter } from "next/navigation"
-import { Activity, Hexagon, Loader2, ShieldCheck } from "lucide-react"
+import Link from "next/link"
+import { Activity, ArrowRight, Hexagon, Loader2, ShieldCheck } from "lucide-react"
 
 import { Theme } from "@/components/ui/theme"
 
@@ -18,25 +17,16 @@ function BrandLogo() {
 }
 
 export default function SwitchAccountPage() {
-  const { isLoaded, userId } = useAuth()
-  const { signOut } = useClerk()
-  const router = useRouter()
-  const didRequest = useRef(false)
+  const didRedirect = useRef(false)
 
   useEffect(() => {
-    if (!isLoaded || didRequest.current) {
+    if (didRedirect.current) {
       return
     }
 
-    didRequest.current = true
-
-    if (!userId) {
-      router.replace("/sign-in")
-      return
-    }
-
-    void signOut({ redirectUrl: "/sign-in" })
-  }, [isLoaded, router, signOut, userId])
+    didRedirect.current = true
+    window.location.replace("/auth/reset-session")
+  }, [])
 
   return (
     <main className="relative h-[100dvh] overflow-hidden bg-[--auth-frame] text-foreground">
@@ -82,7 +72,7 @@ export default function SwitchAccountPage() {
                     Changement de compte
                   </h1>
                   <p className="text-sm leading-6 text-muted-foreground">
-                    Fermeture de la session actuelle avant l'ouverture du formulaire.
+                    Nettoyage de la session locale avant redirection vers le formulaire de connexion.
                   </p>
                 </div>
               </div>
@@ -95,9 +85,17 @@ export default function SwitchAccountPage() {
                   <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                     Preparing sign-in
                   </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">Déconnexion en cours...</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">Redirection en cours...</p>
                 </div>
               </div>
+
+              <Link
+                href="/auth/reset-session"
+                className="inline-flex items-center gap-2 text-sm font-medium text-[--orange] hover:underline"
+              >
+                Continuer manuellement
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
           </section>
         </div>
