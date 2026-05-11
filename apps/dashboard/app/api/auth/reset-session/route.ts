@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
   const store = await cookies()
-  const response = NextResponse.redirect(new URL("/sign-in?prompt=login", request.url))
+  const response = NextResponse.redirect(new URL("/sign-in/?prompt=login", request.url))
 
   response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate")
 

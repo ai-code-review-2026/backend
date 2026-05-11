@@ -75,7 +75,7 @@ export default function SwitchAccountLoading() {
               </div>
 
               <a
-                href="/auth/reset-session/"
+                href="/api/auth/reset-session"
                 className="inline-flex items-center gap-2 text-sm font-medium text-[--orange] hover:underline"
               >
                 Continuer manuellement

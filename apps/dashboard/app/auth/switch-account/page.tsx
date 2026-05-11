@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
 
 export default function SwitchAccountPage() {
-  redirect("/auth/reset-session/")
+  redirect("/api/auth/reset-session")
 }
