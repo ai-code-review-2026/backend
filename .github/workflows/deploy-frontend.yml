@@ -15,19 +15,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push dashboard image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./apps/dashboard
           file: ./apps/dashboard/Dockerfile
@@ -48,7 +48,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-dashboard:${{ github.sha }}
 
       - name: Build and push yjs image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./apps/dashboard
           file: ./apps/dashboard/Dockerfile.yjs
@@ -66,7 +66,7 @@ jobs:
 
     steps:
       - name: SSH deploy frontend
-        uses: appleboy/ssh-action@v1.2.2
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
