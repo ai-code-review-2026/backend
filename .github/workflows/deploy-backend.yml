@@ -30,12 +30,26 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Build and push ML base image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/backend
+          file: ./apps/backend/Dockerfile.ml-base
+          push: true
+          cache-from: type=gha,scope=backend-ml-base
+          cache-to: type=gha,mode=max,scope=backend-ml-base
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-ml-base:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-ml-base:${{ github.sha }}
+
       - name: Build and push backend image
         uses: docker/build-push-action@v7
         with:
           context: ./apps/backend
           file: ./apps/backend/Dockerfile
           push: true
+          build-args: |
+            ML_BASE_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/ai-review-ml-base:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
           tags: |
