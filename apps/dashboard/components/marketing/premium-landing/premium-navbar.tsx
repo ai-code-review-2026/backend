@@ -89,7 +89,7 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
                   variant="ghost"
                   className={cn('rounded-none px-3 text-primary-color hover:bg-card-hover hover:text-primary-color', monoClassName)}
                 >
-                  <Link href="/sign-in">Log in</Link>
+                  <Link href="/sign-in?prompt=login">Log in</Link>
                 </Button>
                 <Button
                   asChild
@@ -98,7 +98,7 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
                     monoClassName,
                   )}
                 >
-                  <Link href="/sign-up">
+                  <Link href="/sign-up?prompt=login">
                     Get a free trial
                   </Link>
                 </Button>
@@ -164,10 +164,10 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
                 {!isSignedIn ? (
                   <div className="grid gap-3 pt-2 sm:grid-cols-2">
                     <Button asChild variant="ghost" className="rounded-full border border-graphite-card text-primary-color">
-                      <Link href="/sign-in">Log in</Link>
+                      <Link href="/sign-in?prompt=login">Log in</Link>
                     </Button>
                     <Button asChild className="rounded-full border border-orange-accent bg-orange/10 text-orange hover:bg-orange/20">
-                      <Link href="/sign-up">Get Started</Link>
+                      <Link href="/sign-up?prompt=login">Get Started</Link>
                     </Button>
                   </div>
                 ) : (

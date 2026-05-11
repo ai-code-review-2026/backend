@@ -67,7 +67,7 @@ export function LandingHero() {
             transition={{ delay: 0.5 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6"
           >
-            <Link href="/sign-up">
+            <Link href="/sign-up?prompt=login">
               <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-[#F97316] to-[#EA580C] text-white rounded-full px-8 py-6 text-base font-semibold hover:brightness-110 shadow-glow-orange transition-all duration-300 gap-2">
                 Get Started Free
                 <ArrowRight className="h-4 w-4" />

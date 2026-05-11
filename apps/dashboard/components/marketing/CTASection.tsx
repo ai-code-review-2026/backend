@@ -49,7 +49,7 @@ export function CTASection() {
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/sign-up">
+              <Link href="/sign-up?prompt=login">
                 <button className="group relative inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-graphite-accent-orange to-amber-500 px-8 py-4 text-base font-semibold text-white shadow-lg shadow-graphite-accent-orange/25 transition-all duration-300 hover:shadow-xl hover:shadow-graphite-accent-orange/30 hover:-translate-y-0.5">
                   <span>Start Free Trial</span>
                   <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
@@ -57,7 +57,7 @@ export function CTASection() {
                   <div className="absolute inset-0 rounded-full bg-gradient-to-r from-graphite-accent-orange to-amber-500 opacity-0 blur-xl transition-opacity group-hover:opacity-50" />
                 </button>
               </Link>
-              <Link href="/sign-in">
+              <Link href="/sign-in?prompt=login">
                 <button className="inline-flex items-center gap-2 rounded-full border border-graphite-border-secondary bg-graphite-bg-tertiary/50 px-8 py-4 text-base font-semibold text-white backdrop-blur-sm transition-all duration-300 hover:border-graphite-text-tertiary hover:bg-graphite-bg-tertiary">
                   Sign In
                 </button>
