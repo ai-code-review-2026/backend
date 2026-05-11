@@ -3,7 +3,6 @@ import { SignIn } from "@clerk/nextjs"
 import { AuthShell } from "@/components/auth/auth-shell"
 import { ClerkConfigurationNotice } from "@/components/auth/clerk-configuration-notice"
 import { clerkAuthAppearance } from "@/components/auth/clerk-auth-appearance"
-import { ForceAuthFormSessionGuard } from "@/components/auth/force-auth-form-session-guard"
 import { LocalInvitationSessionGuard } from "@/components/auth/local-invitation-session-guard"
 import { ClerkAuthWrapper } from "@/components/ui/animated-auth"
 import { buildPathWithForwardedClerkAuthParamsFromRecord } from "@/lib/clerk-invitation"
@@ -20,7 +19,6 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
   return (
     <AuthShell mode="sign-in">
-      <ForceAuthFormSessionGuard />
       <LocalInvitationSessionGuard />
       <ClerkAuthWrapper>
         {clerkConfigured ? (
