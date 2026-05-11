@@ -2,10 +2,13 @@ const fs = require("node:fs")
 const path = require("node:path")
 
 function resolveClerkDistDir() {
-  const clerkPackageJson = require.resolve("@clerk/clerk-js/package.json", {
+  const clerkEntry = require.resolve("@clerk/clerk-js", {
     paths: [process.cwd()],
   })
-  return path.join(path.dirname(clerkPackageJson), "dist")
+  const resolvedDir = path.dirname(clerkEntry)
+  return path.basename(resolvedDir) === "dist"
+    ? resolvedDir
+    : path.join(resolvedDir, "dist")
 }
 
 function syncClerkAssets() {
