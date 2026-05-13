@@ -33,8 +33,8 @@ jobs:
           file: ./apps/dashboard/Dockerfile
           push: true
           build-args: |
-            NEXT_PUBLIC_API_URL=https://app.dev-ora.tn
-            NEXT_PUBLIC_APP_URL=https://app.dev-ora.tn
+            NEXT_PUBLIC_API_URL=https://dev-ora.tn
+            NEXT_PUBLIC_APP_URL=https://dev-ora.tn
             NEXT_PUBLIC_BACKEND_URL=https://api.dev-ora.tn
             NEXT_PUBLIC_Y_WEBSOCKET_URL=wss://yjs.dev-ora.tn
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || secrets.CLERK_PUBLISHABLE_KEY }}
@@ -76,6 +76,6 @@ jobs:
             cd /opt/ai-review/frontend
             sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-dashboard:latest
             sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ai-review-yjs:latest
-            sudo docker compose up -d --force-recreate
+            sudo env DOCKER_USER=${{ secrets.DOCKERHUB_USERNAME }} docker compose up -d --force-recreate
             sleep 20
             curl -I http://127.0.0.1:3001
