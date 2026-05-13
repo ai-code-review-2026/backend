@@ -21,20 +21,22 @@ type PremiumLandingPageProps = {
 
 type LandingVideoProps = {
   src: string;
+  poster?: string;
   className?: string;
 };
 
-function LandingVideo({ src, className }: LandingVideoProps) {
+function LandingVideo({ src, poster, className }: LandingVideoProps) {
   return (
     <div className={cn('overflow-hidden border border-border bg-muted', className)}>
       <video
         src={src}
+        poster={poster}
         autoPlay
         muted
         loop
         playsInline
         preload="metadata"
-        className="block h-full w-full object-contain"
+        className="block h-full min-h-[220px] w-full object-cover sm:min-h-0 sm:object-contain"
       />
     </div>
   );
@@ -129,15 +131,16 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
             The leader in AI code reviews
           </h1>
 
-          <div className="mx-auto mt-12 aspect-[16/9] w-full max-w-[1320px] overflow-hidden rounded-[28px] bg-white dark:bg-[#0B0D12] shadow-[0_24px_80px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:mt-14">
+          <div className="mx-auto mt-8 aspect-[4/3] min-h-[260px] w-full max-w-[1320px] overflow-hidden rounded-[22px] bg-white dark:bg-[#0B0D12] shadow-[0_24px_80px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)] sm:mt-10 sm:aspect-[16/10] md:mt-14 md:aspect-[16/9] md:rounded-[28px]">
             <video
               src="/features.webm"
+              poster="/landing/hero-preview.png"
               autoPlay
               muted
               loop
               playsInline
               preload="metadata"
-              className="block h-full w-full rounded-[28px] object-contain"
+              className="block h-full w-full rounded-[22px] object-cover sm:object-contain md:rounded-[28px]"
             />
           </div>
 
@@ -204,7 +207,11 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
             Greptile generates a detailed graph of your codebase and understands how everything fits together.
             Better understanding of your codebase = more bugs caught.
           </p>
-          <LandingVideo src="/assets/context-type.mp4" className="mx-auto mt-8 w-full max-w-4xl aspect-[16/9]" />
+          <LandingVideo
+            src="/assets/context-type.mp4"
+            poster="/landing/hero-preview.png"
+            className="mx-auto mt-8 aspect-[4/3] w-full max-w-4xl sm:aspect-[16/9]"
+          />
           <div className="mt-8">
             <Link href="#" className={cn('inline-flex items-center gap-2 text-xl text-[#17f0c4]', monoClassName)}>
               Learn more <ArrowRight className="h-5 w-5" />
@@ -220,19 +227,31 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
           <p className={cn('mt-4 text-xl text-foreground/75 md:text-2xl', monoClassName)}>
             Greptile is better when personalized to your team.
           </p>
-          <LandingVideo src="/assets/final.mp4" className="mx-auto mt-8 w-full max-w-4xl aspect-[16/9]" />
+          <LandingVideo
+            src="/assets/final.mp4"
+            poster="/landing/hero-preview.png"
+            className="mx-auto mt-8 aspect-[4/3] w-full max-w-4xl sm:aspect-[16/9]"
+          />
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             <div className="border border-border bg-card p-6">
               <p className={cn('text-lg text-foreground/80', monoClassName)}>
                 Write a rule in English or point Greptile to a markdown file with your team&apos;s best practices.
               </p>
-              <LandingVideo src="/assets/custom-context.mp4" className="mt-4 w-full aspect-[16/9]" />
+              <LandingVideo
+                src="/assets/custom-context.mp4"
+                poster="/landing/hero-preview.png"
+                className="mt-4 aspect-[4/3] w-full sm:aspect-[16/9]"
+              />
             </div>
             <div className="border border-border bg-card p-6">
               <p className={cn('text-lg text-foreground/80', monoClassName)}>
                 Apply rules and context to specific repositories, file paths, or code patterns.
               </p>
-              <LandingVideo src="/assets/context-type.mp4" className="mt-4 w-full aspect-[16/9]" />
+              <LandingVideo
+                src="/assets/context-type.mp4"
+                poster="/landing/hero-preview.png"
+                className="mt-4 aspect-[4/3] w-full sm:aspect-[16/9]"
+              />
             </div>
             <div className="border border-border bg-card p-6">
               <p className={cn('text-lg text-foreground/80', monoClassName)}>
@@ -312,14 +331,15 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
               </p>
             </article>
           </div>
-          <div className="mt-6 overflow-hidden border border-border bg-muted">
+          <div className="mt-6 aspect-[4/3] min-h-[220px] overflow-hidden border border-border bg-muted sm:aspect-[16/9]">
             <video
               src="/assets/workflow.webm"
+              poster="/landing/hero-preview.png"
               autoPlay
               muted
               loop
               playsInline
-              className="w-full"
+              className="h-full w-full object-cover sm:object-contain"
             />
           </div>
         </div>
