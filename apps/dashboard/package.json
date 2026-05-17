@@ -109,7 +109,7 @@
     "react-hook-form": "^7.55.0",
     "react-resizable-panels": "^2.1.7",
     "react-use-measure": "^2.1.7",
-    "recharts": "^2.15.4",
+    "recharts": "^3.8.1",
     "sonner": "^2.0.3",
     "svix": "^1.90.0",
     "tailwind-merge": "^2.6.0",
