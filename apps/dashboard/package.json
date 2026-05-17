@@ -117,7 +117,7 @@
     "vaul": "^1.1.2",
     "ws": "^8.20.0",
     "y-monaco": "^0.1.6",
-    "y-websocket": "^1.4.5",
+    "y-websocket": "^3.0.0",
     "yjs": "^13.5.46"
   },
   "devDependencies": {
